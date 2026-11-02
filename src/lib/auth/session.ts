@@ -80,6 +80,8 @@ export async function getServerSession(): Promise<SessionPayload | null> {
   }
 }
 
+export const getAuthenticatedProfileId = getServerSession;
+
 export function attachSessionCookie(response: any, payload: Omit<SessionPayload, "exp">) {
   const token = createSessionToken(payload);
   response.cookies.set({

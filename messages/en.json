@@ -17,6 +17,9 @@
   },
   "nav": {
     "home": "Home",
+    "discovery": "Matches",
+    "connections": "Connections",
+    "privacy": "Privacy",
     "safety": "Privacy & Safety",
     "verification": "Verification Process",
     "howItWorks": "How It Works",
@@ -244,5 +247,23 @@
     "phoneLabel": "Phone Number",
     "emailLabel": "Email Address",
     "disclosedNotice": "Contact details unlocked under bilateral mutual consent."
+  },
+  "privacy": {
+    "pageTitle": "Privacy & Data Protection Center",
+    "pageSubtitle": "India Digital Personal Data Protection (DPDP) Act 2025 Compliance & Controls",
+    "tabShares": "Photo & Biodata Access",
+    "tabConsent": "DPDP Consent Records",
+    "tabDeletion": "Right to Erasure (Deletion)",
+    "requestPhotoAccess": "Request Photo Access",
+    "accessApproved": "Access Granted",
+    "accessRequested": "Access Requested",
+    "downloadPdf": "Download Biodata (PDF)",
+    "generatingPdf": "Generating PDF...",
+    "pdfNotice": "Watermarked biodata carries tamper-evident digital tracking to prevent unauthorized distribution."
+  },
+  "biodata": {
+    "title": "Confidential Candidate Biodata",
+    "downloadNotice": "Protected under India DPDP Act 2025",
+    "confidentialWatermark": "Confidential & Tracked Matrimonial Biodata"
   }
 }

@@ -1,4 +1,5 @@
 import pg from "pg";
+import fs from "fs";
 const { Pool } = pg;
 
 // Global singleton pool across hot reloads in Next.js development
@@ -10,8 +11,6 @@ declare global {
 function getConnectionString(): string {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs");
     if (fs.existsSync(".env.local")) {
       const lines = fs.readFileSync(".env.local", "utf-8").split("\n");
       for (const line of lines) {
@@ -49,6 +48,13 @@ function getPool(): pg.Pool {
 }
 
 export const db = {
+  async endPool() {
+    if (global.__dbPool) {
+      await global.__dbPool.end();
+      global.__dbPool = undefined;
+    }
+  },
+
   async query<T extends pg.QueryResultRow = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
     const pool = getPool();
     const start = Date.now();
@@ -638,7 +644,7 @@ export const db = {
     const profile = pRes.rows[0];
     if (!profile) return null;
 
-    const [detailsRes, familyRes, prefsRes, photosRes, badgesRes, interestRes, contactRes] =
+    const [detailsRes, familyRes, prefsRes, photosRes, badgesRes, interestRes, contactRes, biodataShareRes] =
       await Promise.all([
         this.query(`SELECT * FROM public.profile_details WHERE profile_id = $1;`, [profile.id]),
         this.query(`SELECT * FROM public.family_details WHERE profile_id = $1;`, [profile.id]),
@@ -658,6 +664,12 @@ export const db = {
           ? this.query(
               `SELECT * FROM public.contact_exchange_requests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
               [viewerProfileId, profile.id]
+            )
+          : { rows: [] },
+        viewerProfileId
+          ? this.query(
+              `SELECT * FROM public.biodata_shares WHERE owner_profile_id = $1 AND requester_profile_id = $2 LIMIT 1;`,
+              [profile.id, viewerProfileId]
             )
           : { rows: [] },
       ]);
@@ -707,6 +719,7 @@ export const db = {
       relationshipState: {
         interest: interestRes.rows[0] || null,
         contactExchange: contactRes.rows[0] || null,
+        biodataShare: biodataShareRes.rows[0] || null,
       },
     };
   },
@@ -981,6 +994,202 @@ export const db = {
       [profileId]
     );
     return res.rows;
+  },
+
+  // --------------------------------------------------------------------------
+  // BIODATA SHARES & PHOTO ACCESS (Milestone M6 - Privacy Controls)
+  // --------------------------------------------------------------------------
+  async requestBiodataShare(ownerProfileId: string, requesterProfileId: string) {
+    if (ownerProfileId === requesterProfileId) {
+      throw new Error("Cannot request biodata share with yourself");
+    }
+
+    const res = await this.query(
+      `INSERT INTO public.biodata_shares (
+        owner_profile_id, requester_profile_id, status, updated_at
+      ) VALUES ($1, $2, 'REQUESTED', NOW())
+      ON CONFLICT (owner_profile_id, requester_profile_id)
+      DO UPDATE SET status = 'REQUESTED', updated_at = NOW()
+      RETURNING *;`,
+      [ownerProfileId, requesterProfileId]
+    );
+
+    await this.logAuditEvent({
+      actorId: requesterProfileId,
+      action: "BIODATA_SHARE_REQUESTED",
+      targetType: "PROFILE",
+      targetId: ownerProfileId,
+      metadata: { shareId: res.rows[0].id },
+    });
+
+    return res.rows[0];
+  },
+
+  async respondBiodataShare(
+    shareId: string,
+    ownerProfileId: string,
+    action: "APPROVE" | "DECLINE" | "REVOKE"
+  ) {
+    const existingRes = await this.query(
+      `SELECT * FROM public.biodata_shares WHERE id = $1 AND owner_profile_id = $2;`,
+      [shareId, ownerProfileId]
+    );
+    if (!existingRes.rows[0]) {
+      throw new Error("Biodata share request not found or unauthorized");
+    }
+
+    let newStatus = "REQUESTED";
+    let expiresAt: Date | null = null;
+
+    if (action === "APPROVE") {
+      newStatus = "APPROVED";
+      // 30 days validity
+      expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    } else if (action === "DECLINE") {
+      newStatus = "DECLINED";
+    } else if (action === "REVOKE") {
+      newStatus = "REVOKED";
+    }
+
+    const res = await this.query(
+      `UPDATE public.biodata_shares
+       SET status = $1, expires_at = $2, updated_at = NOW()
+       WHERE id = $3
+       RETURNING *;`,
+      [newStatus, expiresAt, shareId]
+    );
+
+    await this.logAuditEvent({
+      actorId: ownerProfileId,
+      action: `BIODATA_SHARE_${action}`,
+      targetType: "BIODATA_SHARE",
+      targetId: shareId,
+      metadata: { newStatus, expiresAt },
+    });
+
+    return res.rows[0];
+  },
+
+  async getBiodataShares(profileId: string) {
+    const [incomingRes, outgoingRes] = await Promise.all([
+      this.query(
+        `SELECT bs.*, 
+                rp.public_id as requester_public_id, rp.first_name as requester_name,
+                rp.gender as requester_gender, rp.state as requester_state
+         FROM public.biodata_shares bs
+         JOIN public.profiles rp ON bs.requester_profile_id = rp.id
+         WHERE bs.owner_profile_id = $1
+         ORDER BY bs.updated_at DESC;`,
+        [profileId]
+      ),
+      this.query(
+        `SELECT bs.*, 
+                op.public_id as owner_public_id, op.first_name as owner_name,
+                op.gender as owner_gender, op.state as owner_state
+         FROM public.biodata_shares bs
+         JOIN public.profiles op ON bs.owner_profile_id = op.id
+         WHERE bs.requester_profile_id = $1
+         ORDER BY bs.updated_at DESC;`,
+        [profileId]
+      ),
+    ]);
+
+    return {
+      incoming: incomingRes.rows,
+      outgoing: outgoingRes.rows,
+    };
+  },
+
+  async checkBiodataAccess(ownerProfileId: string, requesterProfileId: string): Promise<boolean> {
+    if (ownerProfileId === requesterProfileId) return true;
+    const res = await this.query(
+      `SELECT 1 FROM public.biodata_shares 
+       WHERE owner_profile_id = $1 AND requester_profile_id = $2 
+         AND status = 'APPROVED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1;`,
+      [ownerProfileId, requesterProfileId]
+    );
+    return res.rows.length > 0;
+  },
+
+  // --------------------------------------------------------------------------
+  // DPDP ACT 2025 CONSENT & RIGHT TO BE FORGOTTEN (Milestone M6)
+  // --------------------------------------------------------------------------
+  async getConsentRecords(userId: string) {
+    const res = await this.query(
+      `SELECT id, consent_purpose, granted, policy_version, timestamp, withdrawn_at
+       FROM public.consent_records
+       WHERE user_id = $1
+       ORDER BY timestamp DESC;`,
+      [userId]
+    );
+    return res.rows;
+  },
+
+  async withdrawConsent(userId: string, consentPurpose: string) {
+    const res = await this.query(
+      `UPDATE public.consent_records
+       SET granted = FALSE, withdrawn_at = NOW()
+       WHERE user_id = $1 AND consent_purpose = $2
+       RETURNING *;`,
+      [userId, consentPurpose]
+    );
+
+    await this.logAuditEvent({
+      actorId: userId,
+      action: "CONSENT_WITHDRAWN",
+      targetType: "USER",
+      targetId: userId,
+      metadata: { consentPurpose },
+    });
+
+    return res.rows;
+  },
+
+  async requestAccountDeletion(userId: string, reason?: string) {
+    await this.query(
+      `UPDATE public.users SET status = 'SUSPENDED' WHERE id = $1;`,
+      [userId]
+    );
+
+    const profRes = await this.query(
+      `UPDATE public.profiles 
+       SET publication_status = 'SUSPENDED', is_discoverable = FALSE, updated_at = NOW()
+       WHERE owner_user_id = $1
+       RETURNING id;`,
+      [userId]
+    );
+
+    const profileId = profRes.rows[0]?.id;
+
+    if (profileId) {
+      await this.query(
+        `UPDATE public.biodata_shares 
+         SET status = 'REVOKED', updated_at = NOW()
+         WHERE owner_profile_id = $1 OR requester_profile_id = $1;`,
+        [profileId]
+      );
+    }
+
+    await this.logAuditEvent({
+      actorId: userId,
+      action: "DPDP_ACCOUNT_DELETION_REQUESTED",
+      targetType: "USER",
+      targetId: userId,
+      metadata: {
+        reason: reason || "User initiated DPDP right to be forgotten",
+        retentionWindowDays: 30,
+        requestedAt: new Date().toISOString(),
+      },
+    });
+
+    return {
+      success: true,
+      retentionDays: 30,
+      profileArchived: !!profileId,
+      notice: "Account scheduled for permanent erasure following 30-day statutory retention window.",
+    };
   },
 
   // --------------------------------------------------------------------------

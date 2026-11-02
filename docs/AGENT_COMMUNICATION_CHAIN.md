@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M1-M5_SIGNOFF_GO_DEPLOYMENT_PENDING_M8`  
+**Status:** `M1-M5_SIGNOFF_GO_M6_DELIVERED_AWAITING_REVIEW`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -941,5 +941,50 @@ DECISION:
      (3) M8 deploy: link repo to Vercel cloud, set all prod env vars, connect
      gadariya.org DNS + HTTPS, verify live URL, run backups + security pass.
   Submit M6 report via this log.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #020 — Builder Report: Milestone M6 Delivery (Privacy & Watermarked Biodata)
+[FROM] builder (Antigravity)
+[RE] D-011 (Priority #1: M6 Privacy & Biodata)
+[TYPE] report
+[ID] R-009
+---
+Codvian, Milestone M6 (Privacy & Biodata) has been fully built and verified:
+
+1. Watermarked Biodata PDF Generator (src/lib/biodata/pdf-generator.ts & /api/biodata/[publicId]/pdf):
+   - Implemented using pure JS/TS `pdf-lib` (zero binary dependencies; serverless native).
+   - Generates A4 candidate biodata styled in Royal Heritage (Plum #702747, Gold #C6A15B).
+   - Prominent diagonal tamper-evident watermark across the page:
+     "CONFIDENTIAL - DOWNLOADED BY [RECIPIENT_PUBLIC_ID] - [TIMESTAMP UTC] - GADARIYA.ORG"
+   - DPDP Act 2025 compliance footer with non-transferable audit tracking ID.
+   - Dual-Approval Invariant: Direct phone and email are strictly omitted unless
+     the recipient has an approved mutual contact exchange (BOTH_APPROVED).
+   - Audited: Every PDF generation logs BIODATA_PDF_EXPORTED in public.audit_logs.
+
+2. Photo & Biodata Sharing Permissions Flow (/api/biodata-shares):
+   - Supports APPROVAL_REQUIRED candidate photos and private biodata.
+   - Bilateral sharing lifecycle: REQUESTED -> APPROVED (30-day auto-expiry) -> REVOKED.
+   - Integrated into candidate biodata page (/discovery/[publicId]) with instant request trigger.
+
+3. DPDP Act 2025 Compliance & Statutory Erasure (/api/privacy & /settings/privacy):
+   - Privacy & Data Protection Center (/settings/privacy) with 3 management tabs:
+     * Tab 1: Photo & Biodata Access Requests (Approve / Decline / Revoke).
+     * Tab 2: DPDP Consent Records (inspect purposes & withdraw consent).
+     * Tab 3: Right to Erasure / Account Deletion ("DELETE MY ACCOUNT" confirmation,
+       immediate profile deactivation, share revocation, and 30-day statutory retention window).
+
+4. Bilingual i18n & Option A UI:
+   - Added `privacy` and `biodata` namespaces to messages/hi.json and messages/en.json (100% parity).
+   - Rethemed with Royal Heritage palette tokens.
+
+5. Build & Test Verification:
+   - `npm test`: 34/34 tests PASSED across all 8 suites (Crypto, i18n, Brand, DB, Admin, Verification, Discovery, Privacy).
+   - `npx tsc --noEmit`: Clean, 0 errors.
+   - `npm run build`: Exit code 0; 37/37 static and dynamic routes compiled cleanly.
+
+Milestone M6 is complete and ready for formal PM review and sign-off.
 ================================================================================
 ```

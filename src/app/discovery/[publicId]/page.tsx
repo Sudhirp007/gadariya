@@ -19,6 +19,9 @@ import {
   Clock,
   AlertCircle,
   Sparkles,
+  Download,
+  FileText,
+  Eye,
 } from "lucide-react";
 
 export default function CandidateDetailPage() {
@@ -30,7 +33,9 @@ export default function CandidateDetailPage() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [contactRequested, setContactRequested] = useState(false);
+  const [biodataRequested, setBiodataRequested] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -43,6 +48,9 @@ export default function CandidateDetailPage() {
           if (data.profile?.relationshipState?.contactExchange) {
             setContactRequested(true);
           }
+          if (data.profile?.relationshipState?.biodataShare) {
+            setBiodataRequested(true);
+          }
         }
       } catch (err) {
         console.error("Error loading candidate profile:", err);
@@ -52,6 +60,56 @@ export default function CandidateDetailPage() {
     }
     if (publicId) loadDetail();
   }, [publicId]);
+
+  const handleDownloadPdf = async () => {
+    if (!profile) return;
+    setDownloadingPdf(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/biodata/${profile.publicId}/pdf`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to download biodata PDF");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Pal_Matrimony_Biodata_${profile.publicId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setMsg({ type: "success", text: "Watermarked biodata PDF downloaded successfully." });
+    } catch (err: unknown) {
+      const errorText = err instanceof Error ? err.message : "Error downloading PDF";
+      setMsg({ type: "error", text: errorText });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleRequestBiodataShare = async () => {
+    if (!profile) return;
+    setRequestLoading(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/biodata-shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetPublicId: profile.publicId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to request access");
+      setBiodataRequested(true);
+      setMsg({ type: "success", text: "Photo & biodata access requested. Awaiting approval." });
+    } catch (err: unknown) {
+      const errorText = err instanceof Error ? err.message : "Error requesting access";
+      setMsg({ type: "error", text: errorText });
+    } finally {
+      setRequestLoading(false);
+    }
+  };
 
   const handleRequestContact = async () => {
     if (!profile) return;
@@ -113,14 +171,27 @@ export default function CandidateDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
-      {/* Back button */}
-      <Link
-        href="/discovery"
-        className="inline-flex items-center space-x-2 text-xs font-bold text-plum hover:text-plum-900 transition"
-      >
-        <ArrowLeft className="w-4 h-4 text-gold-600" />
-        <span>Back to Matches</span>
-      </Link>
+      {/* Top Action Bar */}
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href="/discovery"
+          className="inline-flex items-center space-x-2 text-xs font-bold text-plum hover:text-plum-900 transition"
+        >
+          <ArrowLeft className="w-4 h-4 text-gold-600" />
+          <span>Back to Matches</span>
+        </Link>
+
+        {/* Download Watermarked Biodata PDF Button */}
+        <button
+          onClick={handleDownloadPdf}
+          disabled={downloadingPdf}
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gold-600 hover:bg-gold-700 text-ivory text-xs font-bold shadow-sm transition"
+        >
+          <FileText className="w-3.5 h-3.5 text-ivory" />
+          <span>{downloadingPdf ? "Generating PDF..." : "Download Biodata (PDF)"}</span>
+          <Download className="w-3.5 h-3.5" />
+        </button>
+      </div>
 
       {/* Hero Profile Card */}
       <div className="bg-white rounded-3xl border border-warmgrey p-6 sm:p-10 shadow-sm space-y-6">
@@ -162,6 +233,48 @@ export default function CandidateDetailPage() {
             <span>{msg.text}</span>
           </div>
         )}
+
+        {/* Photo & Biodata Privacy Gate */}
+        <div className="p-4 rounded-2xl bg-ivory border border-warmgrey flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-warmgrey flex items-center justify-center text-plum flex-shrink-0">
+              <Eye className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-plum block">
+                Photo & Private Biodata Privacy Gate
+              </span>
+              <p className="text-[11px] text-charcoal-light">
+                {profile.relationshipState?.biodataShare?.status === "APPROVED"
+                  ? "Access granted: You are authorized to view full candidate photos and biodata."
+                  : "Candidate photos require explicit owner permission to safeguard family privacy."}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            {profile.relationshipState?.biodataShare?.status === "APPROVED" ? (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-forest-50 border border-forest-200 text-forest text-xs font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Access Granted</span>
+              </span>
+            ) : biodataRequested || profile.relationshipState?.biodataShare?.status === "REQUESTED" ? (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gold-50 border border-gold-200 text-gold-800 text-xs font-bold">
+                <Clock className="w-3.5 h-3.5 text-gold-600" />
+                <span>Access Requested</span>
+              </span>
+            ) : (
+              <button
+                onClick={handleRequestBiodataShare}
+                disabled={requestLoading}
+                className="px-4 py-2 rounded-xl bg-plum hover:bg-plum-900 text-ivory text-xs font-bold shadow-sm transition flex items-center space-x-1.5"
+              >
+                <Lock className="w-3.5 h-3.5 text-gold-300" />
+                <span>Request Photo Access</span>
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Candidate Bio */}
         {profile.aboutMe && (
