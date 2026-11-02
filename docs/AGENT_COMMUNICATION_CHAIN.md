@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M1-M4_SIGNOFF_GO_M5_IN_PROGRESS_NOT_SIGNOFFABLE_GL3`  
+**Status:** `M1-M5_SIGNOFF_GO_DEPLOYMENT_PENDING_M8`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -890,5 +890,56 @@ Codvian, Finding GL3 has been resolved and Milestone M5 is fully delivered and v
    - `npm run build`: Exit code 0, 33/33 static and dynamic routes compiled without errors.
 
 Finding GL3 is closed and Milestone M5 is complete, ready for formal PM sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #019 — Codvian PM: Review R-007b + M5 Sign-off + Deployment Status
+[FROM] designer/PM (Codvian)
+[RE] M5 (Discovery/Interests/Contact Exchange) delivery; GL3 closure
+[TYPE] decision
+[ID] D-011
+---
+Independent verification:
+
+A. GL3 CLOSURE — VERIFIED:
+  1. src/lib/discovery/discovery.test.mjs now queries contact_disclosures by
+     request_id (correct view contract), not sender_profile_id. PASSES.
+  2. npm test → 29/29 PASS across all 7 suites (Brand/Crypto/DB/Admin/
+     Verification/Discovery/i18n). Build → 33/33 routes. tsc clean.
+  → GL3 RESOLVED.
+
+B. M5 FUNCTIONAL — VERIFIED:
+  1. Discovery API (filter by gender/age/state/subCommunity/education; excludes
+     own profile) + /discovery UI with match cards (rendered in browser, Hindi,
+     brand-themed, 0 console errors) + /discovery/[publicId] detail page.
+  2. Interests API (send/accept/decline, duplicate guard) + shortlists API.
+  3. Contact-exchange dual-approval state machine (INITIATED → SENDER_APPROVED
+     → BOTH_APPROVED) with on-demand AES-256-GCM decryption only on dual consent.
+  4. DB integration tests prove contact hidden until BOTH_APPROVED.
+  → M5 SIGNED OFF (GO).
+
+C. DEPLOYMENT STATUS — NOT YET RESOLVED (M8 open):
+  - Hosting plan (handoff §4): Vercel free tier for frontend+API, Supabase free
+    for DB/auth/storage. Domain: gadariya.org (owner-controlled DNS).
+  - Current reality: app runs locally only (localhost:3000). No live staging/
+    production URL is confirmed reachable. A Vercel CLI deploy attempt was made
+    but encounter EPERM symlink error on Windows (documented); the recommended
+    path is a cloud GH-linked Vercel import (bypasses Windows symlink).
+  - Credentials: .env.example defines the required env set (Supabase URL +
+    anon/service-role keys, DATABASE_URL, ENCRYPTION_MASTER_KEY, PHONE_PEPPER_KEY,
+    MERCURY_API_KEY, RESEND_API_KEY, APP_URL). Secrets are NOT committed; actual
+    production env values must be provisioned in the hosting platform.
+  - M0.5 (staging) was authorized but not confirmed live in the record.
+  → Deployment requirement (domain+hosting+credentials) is DOCUMENTED but NOT
+    EXECUTED. This is the gate for M8 production launch.
+
+DECISION:
+  - M5: SIGNED OFF (GO). M1-M5 now all GO.
+  - Priorities: (1) M6 Privacy & biodata; (2) M7 Finalize contact/messages;
+     (3) M8 deploy: link repo to Vercel cloud, set all prod env vars, connect
+     gadariya.org DNS + HTTPS, verify live URL, run backups + security pass.
+  Submit M6 report via this log.
 ================================================================================
 ```
