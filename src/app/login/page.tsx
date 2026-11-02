@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import { AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -83,7 +84,7 @@ export default function LoginPage() {
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/");
+        router.push("/profile");
       }, 1500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Authentication failed";
@@ -95,13 +96,11 @@ export default function LoginPage() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-8 space-y-6">
+      <div className="bg-white rounded-3xl border border-warmgrey shadow-md p-8 space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl mx-auto flex items-center justify-center font-bold text-xl shadow-xs">
-            प
-          </div>
-          <h2 className="text-2xl font-bold text-stone-900">{t("auth.loginTitle")}</h2>
-          <p className="text-xs text-stone-500">{t("auth.loginSubtitle")}</p>
+          <BrandLogo variant="icon" className="justify-center mx-auto mb-2" />
+          <h2 className="text-2xl font-bold text-plum">{t("auth.loginTitle")}</h2>
+          <p className="text-xs text-charcoal-light">{t("auth.loginSubtitle")}</p>
         </div>
 
         {error && (
@@ -113,14 +112,14 @@ export default function LoginPage() {
 
         {success ? (
           <div className="text-center py-6 space-y-3">
-            <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto" />
-            <h4 className="font-bold text-stone-900">{t("common.success")}</h4>
-            <p className="text-xs text-stone-500">Redirecting to your dashboard...</p>
+            <CheckCircle2 className="w-12 h-12 text-forest mx-auto" />
+            <h4 className="font-bold text-plum">{t("common.success")}</h4>
+            <p className="text-xs text-charcoal-light">Redirecting to your profile dashboard...</p>
           </div>
         ) : !otpSent ? (
           <form onSubmit={handleSendOtp} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-stone-700">
+              <label className="text-xs font-semibold text-charcoal">
                 {t("auth.phoneLabel")} / {t("auth.emailLabel")}
               </label>
               <input
@@ -128,14 +127,14 @@ export default function LoginPage() {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="e.g. 9876543210 or user@example.com"
-                className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading || !identifier.trim()}
-              className="w-full py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-stone-300 text-white font-semibold rounded-xl shadow-sm transition text-sm flex items-center justify-center space-x-2"
+              className="w-full py-3.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-semibold rounded-xl shadow-md transition text-sm flex items-center justify-center space-x-2"
             >
               <span>{loading ? t("common.loading") : t("auth.sendOtp")}</span>
               <ArrowRight className="w-4 h-4" />
@@ -143,12 +142,12 @@ export default function LoginPage() {
           </form>
         ) : (
           <form onSubmit={handleVerifyOtp} className="space-y-4">
-            <div className="space-y-2 p-4 rounded-xl bg-orange-50/70 border border-orange-200">
-              <label className="text-xs font-semibold text-orange-950 block">
+            <div className="space-y-2 p-4 rounded-xl bg-plum-50 border border-plum-200">
+              <label className="text-xs font-semibold text-plum-900 block">
                 {t("auth.enterOtp")}
               </label>
-              <p className="text-xs text-stone-500">
-                {t("auth.otpSentTo")} <span className="font-semibold text-stone-800">{identifier}</span>
+              <p className="text-xs text-charcoal-light">
+                {t("auth.otpSentTo")} <span className="font-semibold text-plum">{identifier}</span>
               </p>
               <input
                 type="text"
@@ -156,17 +155,17 @@ export default function LoginPage() {
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
                 placeholder="123456"
-                className="w-full px-4 py-2.5 rounded-xl border border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-base font-mono tracking-widest text-center"
+                className="w-full px-4 py-2.5 rounded-xl border border-plum-300 focus:outline-none focus:ring-2 focus:ring-plum text-base font-mono tracking-widest text-center"
               />
               {otpTimer > 0 ? (
-                <p className="text-xs text-orange-700">
+                <p className="text-xs text-plum-700">
                   {t("auth.resendIn")} {otpTimer} {t("auth.seconds")}
                 </p>
               ) : (
                 <button
                   type="button"
                   onClick={handleSendOtp}
-                  className="text-xs text-orange-700 font-semibold underline"
+                  className="text-xs text-plum-700 font-semibold underline"
                 >
                   {t("auth.resendOtp")}
                 </button>
@@ -176,16 +175,16 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || otp.length !== 6}
-              className="w-full py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-stone-300 text-white font-semibold rounded-xl shadow-md transition text-sm"
+              className="w-full py-3.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-semibold rounded-xl shadow-md transition text-sm"
             >
               {loading ? t("common.loading") : t("auth.verifyAndLogin")}
             </button>
           </form>
         )}
 
-        <div className="pt-4 border-t border-stone-100 text-center text-xs text-stone-500">
+        <div className="pt-4 border-t border-warmgrey text-center text-xs text-charcoal-light">
           <span>{t("auth.noAccount")} </span>
-          <Link href="/register" className="text-orange-600 font-semibold hover:underline">
+          <Link href="/register" className="text-plum font-semibold hover:underline">
             {t("common.register")}
           </Link>
         </div>

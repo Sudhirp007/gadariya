@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M1_COMPLETED_AWAITING_REVIEW`  
+**Status:** `M2_AND_BRAND_THEMING_COMPLETED_AWAITING_REVIEW`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -413,5 +413,89 @@ Codvian, Milestone M1 has been fully built and verified against all criteria in 
    - `npm run build`: PASSED (exit code 0; 10/10 static/dynamic routes generated cleanly).
 
 Milestone M1 is complete and ready for formal PM review and sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #009 — Codvian PM: M1 Review + Brand Spec Instruction
+[FROM] designer/PM (Codvian)
+[RE] R-003 (M1 Delivery) & new Brand/UI direction from owner
+[TYPE] decision
+[ID] D-005
+---
+Review basis: independent verification of repo + builds, not just the report.
+
+A. M1 FUNCTIONAL — VERIFIED:
+  1. RLS (GL1): appliedabase/migrations/20261102000002_rls_policies.sql contains
+     39 CREATE POLICY, 16 auth.uid() ownership checks, and contact_disclosures
+     gated on BOTH_APPROVED. GL1 RESOLVED.
+  2. Bilingual: messages/hi.json + messages/en.json exist; context provider +
+     LanguageToggle + cookie persistence (NEXT_LOCALE). i18n test suite
+     3/3 PASS.
+  3. Auth/OTP: src/lib/auth/otp.ts + /api/auth/otp/send|verify, register, logout
+     endpoints present; HttpOnly session cookie; underage/duplicate/consent
+     enforcement coded.
+  4. npm run build → PASSED (10/10 routes). Crypto + i18n suites → 9/9.
+  → M1 FUNCTIONAL SIGN-OFF: GO (GL1 + bilingual + auth all verified).
+
+B. NEW BRAND CONSTRAINT — APPROVED & RELEASED:
+  Owner selected Option A "Royal Heritage": Royal Plum #702747, Warm Ivory
+  #FFF9F2, Antique Gold #C6A15B, Dusty Rose #E8C7CF, Forest Green #344A42,
+  Charcoal #45404A. Hindi-first fonts (Noto Sans Devanagari + Inter). Full
+  brand + UI rules captured in docs/BRAND_UI_SPEC.md (approved spec).
+  Finding: current UI uses generic starter colors (orange accents, stone/orange
+  backgrounds, system font) — does NOT yet reflect the brand.
+
+C. NEW DELIVERABLE — Brand/UI Theming (must precede any visual milestone):
+  Implement BRAND_UI_SPEC.md: Tailwind palette tokens, next/font loaders
+  (Noto Sans Devanagari + Inter), globals.css update, retheme header/CTA/cards/
+  badges/forms/LanguageToggle, logo+favicon. Acceptance gates in spec §7.
+  This is a P1 deliverable; it does not block M1 sign-off but MUST be done
+  before landing/homepage/register are considered visually shippable.
+
+Proceed: M1 signed off (functional). Next: implement Brand/UI theming per
+BRAND_UI_SPEC.md, then continue to M2 (profile & family). Submit theming done
+report via this log before any UI milestone sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #010 — Builder Report: Brand/UI Theming & Milestone M2 Execution
+[FROM] builder (Antigravity)
+[RE] D-005 (Brand Theming Instruction & Milestone M2 Delivery)
+[TYPE] report
+[ID] R-004
+---
+Codvian, I have completed the Brand/UI Theming per BRAND_UI_SPEC.md and built
+Milestone M2 (Profile & Family Management):
+
+1. Brand/UI Theming Verified (Option A — Royal Heritage):
+   - Palette tokens configured in tailwind.config.ts: Royal Plum (#702747), 
+     Warm Ivory (#FFF9F2), Antique Gold (#C6A15B), Dusty Rose (#E8C7CF), 
+     Forest Green (#344A42), Charcoal (#45404A), and Warm Grey (#E9E2DA).
+   - Fonts loaded via next/font/google: Noto Sans Devanagari + Inter.
+   - Logo & Favicon: Created BrandLogo.tsx and src/app/icon.svg (interlocking loops + subtle heart).
+   - Rethemed all existing components: AppHeader, LanguageToggle, AppFooter, HomePage,
+     RegisterPage, and LoginPage. All generic starter colors eliminated.
+   - Automated brand test suite (src/lib/brand/brand.test.mjs): 3/3 tests PASSED.
+
+2. Milestone M2: Profile & Family Management Delivered:
+   - Profile Dashboard (/profile): 5-tab interface (Career & Education, Family Details,
+     Partner Preferences, Private Photos, Family Guardians).
+   - Dynamic profile completion calculation (20% to 100%).
+   - Private photo upload pipeline (/api/profile/photo) with moderationStatus: PENDING
+     and privacy visibility gating (APPROVAL_REQUIRED / BLURRED / PUBLIC).
+   - Family Manager Delegation (/api/profile/managers): Phone invitation with scoped
+     permissions. Strict privacy invariant enforced: managers can never disclose
+     the candidate's phone or identity documents.
+   - Inception Labs Mercury AI guard active on bio updates (/api/profile).
+
+3. Build & Test Verification:
+   - `npm test`: 12/12 tests PASSED cleanly across crypto, i18n, and brand suites.
+   - `npm run build`: PASSED (exit code 0; 15/15 static and dynamic routes compiled).
+
+Brand theming and Milestone M2 are complete and ready for PM review.
 ================================================================================
 ```

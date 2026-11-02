@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n/context";
 import { ShieldCheck, UserCheck, CheckCircle2, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function RegisterPage() {
   const { t } = useTranslation();
@@ -179,26 +180,24 @@ export default function RegisterPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 sm:p-10 space-y-8">
+      <div className="bg-white rounded-3xl border border-warmgrey shadow-md p-6 sm:p-10 space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl mx-auto flex items-center justify-center font-bold text-xl shadow-xs">
-            प
-          </div>
-          <h2 className="text-2xl font-bold text-stone-900">{t("register.title")}</h2>
-          <p className="text-xs sm:text-sm text-stone-500">{t("register.subtitle")}</p>
+          <BrandLogo variant="icon" className="justify-center mx-auto mb-2" />
+          <h2 className="text-2xl font-bold text-plum">{t("register.title")}</h2>
+          <p className="text-xs sm:text-sm text-charcoal-light">{t("register.subtitle")}</p>
         </div>
 
         {/* Stepper Progress */}
         {step < 5 && (
-          <div className="flex items-center justify-between border-b border-stone-100 pb-4 text-xs font-medium text-stone-500">
-            <span className={step >= 1 ? "text-orange-600 font-bold" : ""}>1. {t("register.step1")}</span>
-            <span>→</span>
-            <span className={step >= 2 ? "text-orange-600 font-bold" : ""}>2. {t("register.step2")}</span>
-            <span>→</span>
-            <span className={step >= 3 ? "text-orange-600 font-bold" : ""}>3. {t("register.step3")}</span>
-            <span>→</span>
-            <span className={step >= 4 ? "text-orange-600 font-bold" : ""}>4. {t("register.step4")}</span>
+          <div className="flex items-center justify-between border-b border-warmgrey pb-4 text-xs font-medium text-charcoal-light">
+            <span className={step >= 1 ? "text-plum font-bold" : ""}>1. {t("register.step1")}</span>
+            <span className="text-gold">→</span>
+            <span className={step >= 2 ? "text-plum font-bold" : ""}>2. {t("register.step2")}</span>
+            <span className="text-gold">→</span>
+            <span className={step >= 3 ? "text-plum font-bold" : ""}>3. {t("register.step3")}</span>
+            <span className="text-gold">→</span>
+            <span className={step >= 4 ? "text-plum font-bold" : ""}>4. {t("register.step4")}</span>
           </div>
         )}
 
@@ -212,7 +211,7 @@ export default function RegisterPage() {
         {/* Step 1: Managed By */}
         {step === 1 && (
           <div className="space-y-6">
-            <h3 className="font-semibold text-stone-800 text-base">{t("register.step1")}</h3>
+            <h3 className="font-semibold text-plum text-base">{t("register.step1")}</h3>
             <div className="grid grid-cols-2 gap-3">
               {[
                 { key: "SELF", label: t("register.managedBy.SELF") },
@@ -228,8 +227,8 @@ export default function RegisterPage() {
                   onClick={() => setFormData({ ...formData, managedBy: item.key })}
                   className={`p-4 rounded-xl border text-sm font-medium text-left transition ${
                     formData.managedBy === item.key
-                      ? "border-orange-600 bg-orange-50/70 text-orange-900 font-bold shadow-xs"
-                      : "border-stone-200 hover:border-stone-300 text-stone-700"
+                      ? "border-plum bg-plum-50 text-plum-900 font-bold shadow-2xs"
+                      : "border-warmgrey hover:border-gold-400 text-charcoal"
                   }`}
                 >
                   {item.label}
@@ -239,7 +238,7 @@ export default function RegisterPage() {
 
             <button
               onClick={handleNextStep1}
-              className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-xl shadow-sm transition flex items-center justify-center space-x-2"
+              className="w-full py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center space-x-2"
             >
               <span>{t("common.next")}</span>
               <ArrowRight className="w-4 h-4" />
@@ -250,26 +249,26 @@ export default function RegisterPage() {
         {/* Step 2: Personal Details */}
         {step === 2 && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-stone-800 text-base">{t("register.step2")}</h3>
+            <h3 className="font-semibold text-plum text-base">{t("register.step2")}</h3>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-stone-700">{t("register.firstName")} *</label>
+              <label className="text-xs font-semibold text-charcoal">{t("register.firstName")} *</label>
               <input
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                 placeholder="e.g. Ramesh / Sunita"
-                className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700">{t("register.gender")} *</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.gender")} *</label>
                 <select
                   value={formData.gender}
                   onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 >
                   <option value="MALE">{t("register.male")}</option>
                   <option value="FEMALE">{t("register.female")}</option>
@@ -277,23 +276,23 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700">{t("register.dob")} *</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.dob")} *</label>
                 <input
                   type="date"
                   value={formData.dob}
                   onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700">{t("register.maritalStatus")}</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.maritalStatus")}</label>
                 <select
                   value={formData.maritalStatus}
                   onChange={(e) => setFormData({ ...formData, maritalStatus: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 >
                   <option value="NEVER_MARRIED">{t("register.maritalOptions.NEVER_MARRIED")}</option>
                   <option value="DIVORCED">{t("register.maritalOptions.DIVORCED")}</option>
@@ -303,35 +302,35 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700">{t("register.height")}</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.height")}</label>
                 <input
                   type="number"
                   value={formData.heightCm}
                   onChange={(e) => setFormData({ ...formData, heightCm: Number(e.target.value) })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700">{t("register.state")} *</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.state")} *</label>
                 <input
                   type="text"
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700">{t("register.city")} *</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.city")} *</label>
                 <input
                   type="text"
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                   placeholder="e.g. Indore / Agra"
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
               </div>
             </div>
@@ -340,14 +339,14 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="w-1/3 py-3 border border-stone-300 text-stone-700 font-semibold rounded-xl hover:bg-stone-50 transition"
+                className="w-1/3 py-3 border border-warmgrey text-charcoal font-semibold rounded-xl hover:bg-ivory transition"
               >
                 {t("common.back")}
               </button>
               <button
                 type="button"
                 onClick={handleNextStep2}
-                className="w-2/3 py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-xl shadow-sm transition flex items-center justify-center space-x-2"
+                className="w-2/3 py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center space-x-2"
               >
                 <span>{t("common.next")}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -359,12 +358,12 @@ export default function RegisterPage() {
         {/* Step 3: Contact & OTP Verification */}
         {step === 3 && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-stone-800 text-base">{t("register.step3")}</h3>
+            <h3 className="font-semibold text-plum text-base">{t("register.step3")}</h3>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-stone-700">{t("register.phone")} *</label>
+              <label className="text-xs font-semibold text-charcoal">{t("register.phone")} *</label>
               <div className="flex space-x-2">
-                <span className="inline-flex items-center px-3.5 rounded-xl border border-stone-300 bg-stone-50 text-stone-600 text-sm font-semibold">
+                <span className="inline-flex items-center px-3.5 rounded-xl border border-warmgrey bg-ivory text-charcoal text-sm font-semibold">
                   +91
                 </span>
                 <input
@@ -374,14 +373,14 @@ export default function RegisterPage() {
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="98XXXXXXXX"
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm disabled:bg-stone-50"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm disabled:bg-ivory"
                 />
                 {!otpSent && (
                   <button
                     type="button"
                     onClick={handleSendOtp}
                     disabled={loading || formData.phone.length < 10}
-                    className="px-4 py-2.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white font-medium text-xs rounded-xl transition whitespace-nowrap"
+                    className="px-4 py-2.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-medium text-xs rounded-xl transition whitespace-nowrap shadow-2xs"
                   >
                     {loading ? t("common.loading") : t("auth.sendOtp")}
                   </button>
@@ -390,8 +389,8 @@ export default function RegisterPage() {
             </div>
 
             {otpSent && (
-              <div className="space-y-2 p-4 rounded-xl bg-orange-50/70 border border-orange-200">
-                <label className="text-xs font-semibold text-orange-950 block">
+              <div className="space-y-2 p-4 rounded-xl bg-plum-50 border border-plum-200">
+                <label className="text-xs font-semibold text-plum-900 block">
                   {t("auth.enterOtp")} ({t("auth.otpSentTo")} +91 {formData.phone})
                 </label>
                 <div className="flex space-x-2">
@@ -401,26 +400,26 @@ export default function RegisterPage() {
                     value={formData.otp}
                     onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
                     placeholder="123456"
-                    className="w-full px-4 py-2.5 rounded-xl border border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-base font-mono tracking-widest text-center"
+                    className="w-full px-4 py-2.5 rounded-xl border border-plum-300 focus:outline-none focus:ring-2 focus:ring-plum text-base font-mono tracking-widest text-center"
                   />
                   <button
                     type="button"
                     onClick={handleVerifyOtp}
                     disabled={loading || formData.otp.length !== 6}
-                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-stone-300 text-white font-semibold text-xs rounded-xl shadow-xs transition"
+                    className="px-5 py-2.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-semibold text-xs rounded-xl shadow-xs transition"
                   >
                     {loading ? t("common.loading") : t("common.submit")}
                   </button>
                 </div>
                 {otpTimer > 0 ? (
-                  <p className="text-xs text-orange-700">
+                  <p className="text-xs text-plum-700">
                     {t("auth.resendIn")} {otpTimer} {t("auth.seconds")}
                   </p>
                 ) : (
                   <button
                     type="button"
                     onClick={handleSendOtp}
-                    className="text-xs text-orange-700 font-semibold underline"
+                    className="text-xs text-plum-700 font-semibold underline"
                   >
                     {t("auth.resendOtp")}
                   </button>
@@ -429,13 +428,13 @@ export default function RegisterPage() {
             )}
 
             <div className="space-y-1 pt-2">
-              <label className="text-xs font-semibold text-stone-700">{t("register.email")} ({t("common.optional")})</label>
+              <label className="text-xs font-semibold text-charcoal">{t("register.email")} ({t("common.optional")})</label>
               <input
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="candidate@example.com"
-                className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
               />
             </div>
 
@@ -443,7 +442,7 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="w-1/3 py-3 border border-stone-300 text-stone-700 font-semibold rounded-xl hover:bg-stone-50 transition"
+                className="w-1/3 py-3 border border-warmgrey text-charcoal font-semibold rounded-xl hover:bg-ivory transition"
               >
                 {t("common.back")}
               </button>
@@ -454,17 +453,17 @@ export default function RegisterPage() {
         {/* Step 4: Community Declaration & DPDP Consent */}
         {step === 4 && (
           <div className="space-y-6">
-            <h3 className="font-semibold text-stone-800 text-base">{t("register.step4")}</h3>
+            <h3 className="font-semibold text-plum text-base">{t("register.step4")}</h3>
 
-            <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-4">
+            <div className="p-5 rounded-2xl bg-ivory border border-gold-300/80 space-y-4">
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.communityDeclaration}
                   onChange={(e) => setFormData({ ...formData, communityDeclaration: e.target.checked })}
-                  className="w-5 h-5 mt-0.5 text-orange-600 rounded border-stone-300 focus:ring-orange-500"
+                  className="w-5 h-5 mt-0.5 text-plum rounded border-warmgrey focus:ring-plum"
                 />
-                <span className="text-xs sm:text-sm font-medium text-amber-950 leading-relaxed">
+                <span className="text-xs sm:text-sm font-medium text-plum-950 leading-relaxed">
                   {t("register.communityDeclaration")}
                 </span>
               </label>
@@ -474,9 +473,9 @@ export default function RegisterPage() {
                   type="checkbox"
                   checked={formData.consentTerms}
                   onChange={(e) => setFormData({ ...formData, consentTerms: e.target.checked })}
-                  className="w-5 h-5 mt-0.5 text-orange-600 rounded border-stone-300 focus:ring-orange-500"
+                  className="w-5 h-5 mt-0.5 text-plum rounded border-warmgrey focus:ring-plum"
                 />
-                <span className="text-xs sm:text-sm font-medium text-amber-950 leading-relaxed">
+                <span className="text-xs sm:text-sm font-medium text-plum-950 leading-relaxed">
                   {t("register.dpdpConsent")}
                 </span>
               </label>
@@ -486,7 +485,7 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setStep(3)}
-                className="w-1/3 py-3 border border-stone-300 text-stone-700 font-semibold rounded-xl hover:bg-stone-50 transition"
+                className="w-1/3 py-3 border border-warmgrey text-charcoal font-semibold rounded-xl hover:bg-ivory transition"
               >
                 {t("common.back")}
               </button>
@@ -494,7 +493,7 @@ export default function RegisterPage() {
                 type="button"
                 onClick={handleSubmitRegistration}
                 disabled={loading || !formData.communityDeclaration || !formData.consentTerms}
-                className="w-2/3 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-stone-300 text-white font-semibold rounded-xl shadow-md transition"
+                className="w-2/3 py-3.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-semibold rounded-xl shadow-md transition"
               >
                 {loading ? t("common.loading") : t("common.submit")}
               </button>
@@ -505,26 +504,26 @@ export default function RegisterPage() {
         {/* Step 5: Success & Public ID Confirmation */}
         {step === 5 && registeredProfile && (
           <div className="text-center space-y-6 py-4">
-            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full mx-auto flex items-center justify-center">
+            <div className="w-16 h-16 bg-forest-50 text-forest rounded-full mx-auto flex items-center justify-center">
               <CheckCircle2 className="w-10 h-10" />
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-2xl font-bold text-stone-900">{t("register.successTitle")}</h3>
-              <p className="text-xs sm:text-sm text-stone-600">{t("register.successMessage")}</p>
-              <div className="inline-block px-6 py-2.5 bg-orange-100 text-orange-800 font-mono text-2xl font-extrabold rounded-2xl tracking-widest mt-2 border border-orange-200">
+              <h3 className="text-2xl font-bold text-plum">{t("register.successTitle")}</h3>
+              <p className="text-xs sm:text-sm text-charcoal-light">{t("register.successMessage")}</p>
+              <div className="inline-block px-7 py-3 bg-plum-50 text-plum font-mono text-2xl font-extrabold rounded-2xl tracking-widest mt-2 border border-plum-200">
                 {registeredProfile.publicId}
               </div>
             </div>
 
-            <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
+            <p className="text-xs text-charcoal-light max-w-md mx-auto leading-relaxed">
               {t("register.pendingReviewNotice")}
             </p>
 
             <div className="pt-4">
               <Link
-                href="/"
-                className="inline-block px-8 py-3 bg-stone-900 hover:bg-stone-800 text-white font-semibold rounded-xl shadow-sm transition"
+                href="/profile"
+                className="inline-block px-8 py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition"
               >
                 {t("register.goToDashboard")}
               </Link>

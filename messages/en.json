@@ -1,7 +1,7 @@
 {
   "common": {
     "appName": "Pal Matrimony",
-    "tagline": "Trusted Profiles • Respectful Connections • Private by Design",
+    "tagline": "Where Trust Begins, Relationships Blossom.",
     "signIn": "Sign In",
     "register": "Register Free",
     "submit": "Submit",
@@ -20,6 +20,7 @@
     "safety": "Privacy & Safety",
     "verification": "Verification Process",
     "howItWorks": "How It Works",
+    "profile": "My Profile",
     "switchLang": "हिंदी"
   },
   "home": {
@@ -109,6 +110,47 @@
     "successMessage": "Your unique public profile ID has been generated:",
     "pendingReviewNotice": "Your profile is pending admin review. Once verified, you will be discoverable by eligible community members.",
     "goToDashboard": "View Your Profile"
+  },
+  "profile": {
+    "title": "My Profile & Family Management",
+    "completionScore": "Profile Completion",
+    "publicIdLabel": "Public ID",
+    "tabBiodata": "Career & Education",
+    "tabFamily": "Family Details",
+    "tabPreferences": "Partner Preferences",
+    "tabPhotos": "Private Photos",
+    "tabManagers": "Family Managers",
+    "education": "Highest Qualification",
+    "educationDetail": "University / College",
+    "employedIn": "Employment Sector",
+    "occupation": "Occupation / Designation",
+    "annualIncome": "Annual Income Range",
+    "diet": "Dietary Habits",
+    "aboutMe": "About the Candidate",
+    "fatherOccupation": "Father's Profession",
+    "motherOccupation": "Mother's Profession",
+    "brothersCount": "Number of Brothers",
+    "sistersCount": "Number of Sisters",
+    "familyType": "Family Type",
+    "familyValues": "Family Values",
+    "familyLocation": "Family Location / Native Place",
+    "aboutFamily": "Family Background Summary",
+    "prefAge": "Age Range (Min - Max)",
+    "prefHeight": "Height Range (cm)",
+    "prefStates": "Preferred States",
+    "photoUpload": "Upload Private Photo",
+    "photoVisibility": "Photo Privacy Control",
+    "visibilityOptions": {
+      "APPROVAL_REQUIRED": "Visible only after explicit consent (Recommended)",
+      "BLURRED": "Blurred until unblurred by consent",
+      "PUBLIC_TO_MEMBERS": "Visible to verified community members"
+    },
+    "inviteManager": "Add Family Guardian",
+    "managerPhone": "Guardian Mobile Number",
+    "managerRelation": "Relation to Candidate",
+    "managerWarning": "Security Rule: Family managers never inherit authority to disclose the candidate's phone or identity documents.",
+    "submitReview": "Submit for Admin Review",
+    "savedSuccess": "Profile updated successfully!"
   },
   "footer": {
     "desc": "A secure and dignified matchmaking platform for eligible brides and grooms of the Pal (Gadaria) community.",
