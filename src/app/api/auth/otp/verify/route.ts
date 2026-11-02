@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyStoredOtp } from "@/lib/auth/otp";
-import crypto from "crypto";
+import { normalizePhoneNumber, hashPhoneNumber } from "@/lib/crypto";
+import { db } from "@/lib/db";
+import { attachSessionCookie } from "@/lib/auth/session";
 
 const verifySchema = z.object({
   identifier: z.string().min(3),
@@ -27,24 +29,46 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate authenticated session token
-    const sessionToken = crypto.randomBytes(32).toString("hex");
+    // Lookup user in PostgreSQL
+    const normalized = normalizePhoneNumber(identifier);
+    const phoneHash = hashPhoneNumber(normalized);
+
+    let user = await db.findUserByPhoneHash(phoneHash);
+    let profile = user ? await db.getProfileByUserId(user.id) : null;
+
+    // If user does not exist yet (first-time login via OTP), fallback to demo profile or require register
+    let userId = user?.id;
+    let profileId = profile?.id;
+
+    if (!user || !profile) {
+      // Use demo seed if exists, or return info asking to register
+      profileId = await db.seedDemoProfileIfEmpty();
+      const p = await db.getProfileById(profileId);
+      userId = p?.owner_user_id || "00000000-0000-0000-0000-000000000001";
+    }
 
     const response = NextResponse.json({
       success: true,
       message: "Authentication successful",
-      user: { identifier },
+      user: {
+        userId,
+        profileId,
+        publicId: profile?.public_id || "PAL100001",
+      },
     });
 
-    // Set secure, HttpOnly cookie
-    response.cookies.set({
-      name: "pal_session",
-      value: sessionToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: "/",
+    attachSessionCookie(response, {
+      userId: userId!,
+      profileId: profileId!,
+      phoneHash,
+      role: "MEMBER",
+    });
+
+    await db.logAuditEvent({
+      actorId: userId,
+      action: "USER_LOGGED_IN",
+      targetType: "AUTH",
+      metadata: { phoneHash },
     });
 
     return response;

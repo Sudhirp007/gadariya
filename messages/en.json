@@ -160,5 +160,26 @@
     "rule3": "Watermarked biodata PDF downloads with recipient ID tracking",
     "rule4": "Complete audit trail in compliance with India's DPDP Act 2025",
     "copyright": "© 2026 Pal Matrimony (gadariya.org). All rights reserved."
+  },
+  "admin": {
+    "portalTitle": "Pal Matrimony Admin Portal",
+    "mfaTitle": "Security Verification (MFA)",
+    "mfaDesc": "Enter the 6-digit MFA code sent to your authorized admin email.",
+    "loginButton": "Admin Sign In",
+    "verifyMfaButton": "Verify & Enter Admin Console",
+    "tabOverview": "Dashboard Overview",
+    "tabProfiles": "Profile Review Queue",
+    "tabVerifications": "Verification Requests",
+    "tabReports": "Reports & Moderation",
+    "statPendingProfiles": "Pending Profiles",
+    "statPendingVerifications": "Pending Verifications",
+    "statActiveReports": "Abuse Reports",
+    "statTotalUsers": "Active Members",
+    "approveProfile": "Approve Profile",
+    "rejectProfile": "Reject Profile",
+    "suspendProfile": "Suspend Profile",
+    "notesPlaceholder": "Reason for action (Mandatory for audit)...",
+    "actionSuccess": "Action completed successfully",
+    "logout": "Admin Logout"
   }
 }

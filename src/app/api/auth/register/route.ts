@@ -1,48 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import {
   normalizePhoneNumber,
   hashPhoneNumber,
   encryptData,
   calculateAge,
-  generatePublicId,
 } from "@/lib/crypto";
 import { screenBioTextForPII } from "@/lib/ai/mercury";
-
-// In-memory registered user repository for local dev / staging test executions
-// When remote Supabase credentials are provided, writes through to PostgreSQL
-interface UserRecord {
-  id: string;
-  phone_lookup_hash: string;
-  phone_encrypted: string;
-  phone_iv: string;
-  phone_tag: string;
-  email?: string;
-  created_at: string;
-}
-
-interface ProfileRecord {
-  id: string;
-  public_id: string;
-  owner_user_id: string;
-  first_name: string;
-  gender: string;
-  dob: string;
-  age: number;
-  height_cm?: number;
-  marital_status: string;
-  state: string;
-  city: string;
-  managed_by: string;
-  sub_community?: string;
-  publication_status: string;
-  is_discoverable: boolean;
-  completion_score: number;
-}
-
-const localUsersDb = new Map<string, UserRecord>(); // Keyed by phone_lookup_hash
-const localProfilesDb = new Map<string, ProfileRecord>();
-let sequenceCounter = 100001;
+import { db } from "@/lib/db";
+import { attachSessionCookie } from "@/lib/auth/session";
 
 const registrationSchema = z.object({
   managedBy: z.enum(["SELF", "SON", "DAUGHTER", "BROTHER", "SISTER", "RELATIVE"]).default("SELF"),
@@ -92,7 +59,8 @@ export async function POST(req: Request) {
     const normalizedPhone = normalizePhoneNumber(data.phone);
     const phoneHash = hashPhoneNumber(normalizedPhone);
 
-    if (localUsersDb.has(phoneHash)) {
+    const existingUser = await db.findUserByPhoneHash(phoneHash);
+    if (existingUser) {
       return NextResponse.json(
         { error: "An account with this verified mobile number already exists." },
         { status: 409 }
@@ -116,57 +84,94 @@ export async function POST(req: Request) {
     // 4. Invariant: Field-Level Encryption at Rest (AES-256-GCM)
     const encryptedPhone = encryptData(normalizedPhone);
 
-    // 5. User Creation
+    // 5. User Creation in PostgreSQL
     const userId = crypto.randomUUID();
-    const userRecord: UserRecord = {
+    const user = await db.createUser({
       id: userId,
-      phone_lookup_hash: phoneHash,
-      phone_encrypted: encryptedPhone.ciphertext,
-      phone_iv: encryptedPhone.iv,
-      phone_tag: encryptedPhone.tag,
       email: data.email,
-      created_at: new Date().toISOString(),
-    };
-    localUsersDb.set(phoneHash, userRecord);
+      phoneEncrypted: encryptedPhone.ciphertext,
+      phoneIv: encryptedPhone.iv,
+      phoneTag: encryptedPhone.tag,
+      phoneLookupHash: phoneHash,
+    });
 
-    // 6. Profile Creation with Unique Public ID (PAL######)
+    // 6. Profile Creation in PostgreSQL (Trigger generates PAL###### public ID)
     const profileId = crypto.randomUUID();
-    const publicId = generatePublicId(sequenceCounter++);
+    const profileRes = await db.query(
+      `INSERT INTO public.profiles (
+        id, owner_user_id, managed_by, first_name, gender, dob, height_cm,
+        marital_status, state, city, sub_community, publication_status,
+        is_discoverable, completion_score
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING_REVIEW', TRUE, 40
+      ) RETURNING *;`,
+      [
+        profileId,
+        userId,
+        data.managedBy,
+        data.firstName,
+        data.gender,
+        data.dob,
+        data.heightCm || null,
+        data.maritalStatus,
+        data.state,
+        data.city,
+        data.subCommunity || null,
+      ]
+    );
+    const profile = profileRes.rows[0];
 
-    const profileRecord: ProfileRecord = {
-      id: profileId,
-      public_id: publicId,
-      owner_user_id: userId,
-      first_name: data.firstName,
-      gender: data.gender,
-      dob: data.dob,
-      age,
-      height_cm: data.heightCm,
-      marital_status: data.maritalStatus,
-      state: data.state,
-      city: data.city,
-      managed_by: data.managedBy,
-      sub_community: data.subCommunity,
-      publication_status: "PENDING_REVIEW",
-      is_discoverable: true,
-      completion_score: 40,
-    };
-    localProfilesDb.set(profileId, profileRecord);
+    // 7. Profile Details in PostgreSQL
+    if (data.aboutMe) {
+      await db.query(
+        `INSERT INTO public.profile_details (profile_id, about_me) 
+         VALUES ($1, $2);`,
+        [profileId, data.aboutMe]
+      );
+    }
 
-    // 7. Sanitized Response (NEVER exposes phone, email, or internal keys)
-    return NextResponse.json({
+    // 8. DPDP Act 2025 Consent Logging
+    await db.query(
+      `INSERT INTO public.consent_records (user_id, consent_purpose, granted, policy_version)
+       VALUES 
+       ($1, 'TERMS_AND_PRIVACY', TRUE, 'v1.0'),
+       ($1, 'COMMUNITY_DECLARATION', TRUE, 'v1.0');`,
+      [userId]
+    );
+
+    // 9. Audit Log
+    await db.logAuditEvent({
+      actorId: userId,
+      action: "USER_REGISTERED",
+      targetType: "PROFILE",
+      targetId: profileId,
+      metadata: { publicId: profile.public_id, managedBy: data.managedBy },
+    });
+
+    // 10. Sanitized Response with Session Cookie
+    const response = NextResponse.json({
       success: true,
       message: "Profile registered successfully",
       profile: {
-        publicId: profileRecord.public_id,
-        firstName: profileRecord.first_name,
-        gender: profileRecord.gender,
-        age: profileRecord.age,
-        state: profileRecord.state,
-        city: profileRecord.city,
-        publicationStatus: profileRecord.publication_status,
+        id: profile.id,
+        publicId: profile.public_id,
+        firstName: profile.first_name,
+        gender: profile.gender,
+        age,
+        state: profile.state,
+        city: profile.city,
+        publicationStatus: profile.publication_status,
       },
     });
+
+    attachSessionCookie(response, {
+      userId,
+      profileId,
+      phoneHash,
+      role: "MEMBER",
+    });
+
+    return response;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ error: msg }, { status: 500 });

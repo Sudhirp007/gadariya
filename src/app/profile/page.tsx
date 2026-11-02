@@ -86,6 +86,33 @@ export default function ProfilePage() {
   // Photo Upload State
   const [photoVisibility, setPhotoVisibility] = useState("APPROVAL_REQUIRED");
 
+  // Load real profile from database on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadProfile() {
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.profile && isMounted) {
+            setProfile((prev) => ({
+              ...prev,
+              ...data.profile,
+              photos: data.profile.photos || prev.photos,
+              managers: data.profile.managers || prev.managers,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+      }
+    }
+    loadProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleSaveProfile = async () => {
     setError(null);
     setSaveSuccess(false);
@@ -183,6 +210,27 @@ export default function ProfilePage() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Upload error";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRevokeManager = async (managerId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/profile/managers?managerId=${managerId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to revoke manager");
+      setProfile((prev) => ({
+        ...prev,
+        managers: prev.managers.filter((m) => m.id !== managerId),
+      }));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Revoke error";
       setError(msg);
     } finally {
       setLoading(false);
@@ -662,9 +710,18 @@ export default function ProfilePage() {
                   <div key={m.id} className="p-4 rounded-xl border border-warmgrey flex items-center justify-between text-xs">
                     <div>
                       <span className="font-bold text-plum">{m.relation}</span>
-                      <span className="text-charcoal-light ml-2">({m.phone})</span>
+                      {m.phone && <span className="text-charcoal-light ml-2">({m.phone})</span>}
                     </div>
-                    <span className="px-2 py-0.5 rounded bg-forest-50 text-forest font-semibold">Active</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="px-2 py-0.5 rounded bg-forest-50 text-forest font-semibold">Active</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRevokeManager(m.id)}
+                        className="px-2 py-0.5 rounded bg-rose-50 text-plum hover:bg-rose-100 font-medium transition"
+                      >
+                        Revoke
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

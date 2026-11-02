@@ -39,6 +39,14 @@ export function generateAndStoreOtp(identifier: string): string {
   return code;
 }
 
+export function storeOtp(identifier: string, code: string, ttlMs = 5 * 60 * 1000): void {
+  otpCache.set(identifier, {
+    code,
+    expiresAt: Date.now() + ttlMs,
+    attempts: 0,
+  });
+}
+
 export function verifyStoredOtp(identifier: string, inputCode: string): boolean {
   const stored = otpCache.get(identifier);
   if (!stored) return false;

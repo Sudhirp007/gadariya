@@ -26,6 +26,8 @@
 .env.production
 Mercury API Key.txt
 Mercury API Key.png
+supabase password.txt
+*password*
 *.key
 *.secret
 
