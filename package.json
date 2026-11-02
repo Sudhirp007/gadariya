@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "node --test src/lib/crypto/crypto.test.mjs src/lib/i18n/i18n.test.mjs src/lib/brand/brand.test.mjs src/lib/db/db.test.mjs src/lib/admin/admin.test.mjs src/lib/verification/verification.test.mjs src/lib/discovery/discovery.test.mjs src/lib/privacy/privacy.test.mjs src/lib/messages/messages.test.mjs src/lib/firebase/firebase-auth.test.mjs",
     "test:messages": "node --test src/lib/messages/messages.test.mjs",
     "test:privacy": "node --test src/lib/privacy/privacy.test.mjs",
@@ -31,6 +32,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.13.4",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.8",

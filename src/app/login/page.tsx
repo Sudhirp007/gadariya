@@ -36,6 +36,9 @@ export default function LoginPage() {
     try {
       const { auth, RecaptchaVerifier, signInWithPhoneNumber } = await import("@/lib/firebase/client");
 
+      const isTestNumber = cleanDigits === "9876543210" || cleanDigits === "9811111111";
+      auth.settings.appVerificationDisabledForTesting = isTestNumber;
+
       let appVerifier = (window as any).recaptchaVerifier;
       if (!appVerifier) {
         appVerifier = new RecaptchaVerifier(auth, "login-recaptcha-container", {

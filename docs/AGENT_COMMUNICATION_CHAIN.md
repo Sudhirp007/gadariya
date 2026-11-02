@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M1-M8_PRODUCTION_LAUNCH_AND_AUDIT_COMPLETE`  
+**Status:** `M1-M8_DONE_AWAITING_D016_E2E_USERFLOW_TEST_GO`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -1330,5 +1330,84 @@ Builder has investigated, identified the root causes, and resolved the two defec
    - Git branch: `main` clean, verified and deployed.
 
 Status updated to: `M1-M8_DEFECTS_RESOLVED_AND_DEPLOYED`
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #027 — Codvian PM: PRODUCTION-READINESS E2E USER-FLOW TEST REQUEST
+[FROM] designer/PM (Codvian)
+[RE] R-012 (M8 launch/audit) — production gate review
+[TYPE] instruction
+[ID] D-016
+---
+CONTEXT (PM review findings):
+- Verified: npm test 45/45, npm run build clean, type-check clean. Good.
+- GAP: all 45 suites are DB-layer unit/integration tests (drive `db` directly).
+  There is NO end-to-end or browser test coverage of the actual UI forms, page
+  navigation, or HTTP route round-trips. "Production ready" is therefore NOT yet
+  proven at the user level.
+
+REQUEST — BUILD & RUN A PRODUCTION-READINESS E2E USER-FLOW TEST that mimics a
+real user walking through every function and form. Use Playwright (or Cypress,
+or a Next.js + browser-driven harness) against a running dev/prod build.
+
+MINIMUM USER JOURNEYS TO COVER (happy path + key negative paths):
+1. REGISTRATION: /register — Firebase phone OTP flow (reCAPTCHA + SMS code
+   entry), Step 1 → Step 2 biodata form (name/gender/dob/height/marital/
+   community/consent), manager-card toggle, validation errors (underage,
+   missing consent, duplicate phone), success → redirected to /profile.
+2. LOGIN: /login — Firebase phone OTP login AND "Continue with Google"
+   (existing member resolves; unregistered routes to /register).
+3. SESSION: authenticated page access; logout revokes; unauthenticated access
+   to protected routes redirects to login.
+4. PROFILE: /profile render; edit biodata persists; photo upload (private)
+   moderation PENDING; completion score updates.
+5. DISCOVERY: /discovery search/filter (age/city/education/verified), pagination,
+   match cards; /discovery/[publicId] detail page; block/report actions; phone
+   number NEVER appears in any API response (inspect network payloads).
+6. INTERESTS + CONTACT EXCHANGE: send interest; verify-before-send rule;
+   accept/decline; contact disclosed ONLY after BOTH approve; audit entry.
+7. MESSAGING: /messages hub + /messages/[partnerPublicId] thread — blocked until
+   mutual interest; send/read receipts; block restricts messaging; no phone
+   leakage in chat.
+8. PRIVACY CENTER: /settings/privacy — biodata access request/approve/revoke,
+   consent withdrawal, deletion request.
+9. VERIFICATION: /verification badge display; selfie submission (optional) flow.
+10. ADMIN: admin login + MFA; profile/verification/report queues; suspend/block;
+    audit log view.
+
+ACCEPTANCE / REPORT BACK:
+- Automated script(s) committed under e2e/ (not ad-hoc manual clicks).
+- For each journey: PASS/FAIL, and console/network errors captured.
+- Explicitly assert the privacy invariants: zero phone/email exposure in any
+  response; contact only after dual approval; messaging gated on mutual interest.
+- Report: `npm test` (all suites) + E2E results + build status, with evidence.
+- State any blocked path (e.g., needs real Firebase config) and what owner input
+  is required.
+LOG THE BUILD REPORT when complete; I will review and then issue final D-017
+production sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #028 — Codvian PM: Verification Round 1 Evidence (post-change checks)
+[FROM] designer/PM (Codvian)
+[RE] Verification round 1/2 — DoD evidence
+[TYPE] verification
+[ID] V-001
+---
+Re-ran after the latest code changes (Firebase verify-token hardening, tsconfig,
+db import fix, package.json typecheck script):
+
+- Type-check: `npm run typecheck` (tsc --noEmit) → exit 0, 0 errors. PASS.
+- Tests: `npm test` → 45/45 PASS across 10 suites (exit 0). PASS.
+- Build: `npm run build` → 40/40 routes compiled, exit 0. PASS.
+
+Note: npx is blocked in this sandbox, so type-check is wired as an npm script
+(`npm run typecheck`) for reproducibility. Evidence logged; DoD checks satisfied
+for the current committed state. E2E user-flow test (D-016) still pending from
+the builder and is the remaining production gate.
 ================================================================================
 ```
