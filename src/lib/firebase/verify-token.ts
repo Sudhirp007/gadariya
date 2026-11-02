@@ -16,8 +16,11 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<VerifiedFi
     throw new Error("Missing Firebase ID token");
   }
 
-  // Support offline mock/test tokens in automated CI and test environments
-  if (idToken.startsWith("mock-phone-") || idToken.startsWith("test-token-")) {
+  // Support offline mock/test tokens in automated CI and test environments ONLY.
+  // Gate behind NODE_ENV so this bypass can never be used against production
+  // to impersonate an arbitrary verified phone number.
+  const isNonProduction = process.env.NODE_ENV !== "production";
+  if (isNonProduction && (idToken.startsWith("mock-phone-") || idToken.startsWith("test-token-"))) {
     const parts = idToken.split(":");
     const phone = parts[1] || "+919876543210";
     const uid = parts[2] || "mock-uid-" + phone.replace(/\D/g, "");
