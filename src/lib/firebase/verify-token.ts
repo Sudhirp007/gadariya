@@ -22,8 +22,8 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<VerifiedFi
   const isNonProduction = process.env.NODE_ENV !== "production";
   if (isNonProduction && (idToken.startsWith("mock-phone-") || idToken.startsWith("test-token-"))) {
     const parts = idToken.split(":");
-    const phone = parts[1] || "+919876543210";
-    const uid = parts[2] || "mock-uid-" + phone.replace(/\D/g, "");
+    const phone = parts[1] === "none" || parts[1] === "" ? undefined : (parts[1] || "+919876543210");
+    const uid = parts[2] || (phone ? "mock-uid-" + phone.replace(/\D/g, "") : "mock-uid-google");
     return {
       uid,
       phoneNumber: phone,

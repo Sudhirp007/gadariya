@@ -23,9 +23,9 @@ const registrationSchema = z
     state: z.string().min(2),
     city: z.string().min(2),
     subCommunity: z.string().optional(),
-    phone: z.string().min(10, "Phone number must be at least 10 digits").optional(),
+    phone: z.string().optional(),
     firebaseIdToken: z.string().optional(),
-    email: z.string().email("Invalid email address").optional(),
+    email: z.string().email("Invalid email address").optional().or(z.literal("")),
     aboutMe: z.string().max(1000).optional(),
     communityDeclaration: z.boolean().refine((val) => val === true, {
       message: "You must declare Pal (Gadaria) community affiliation",
@@ -34,8 +34,8 @@ const registrationSchema = z
       message: "Consent to terms and privacy policy is mandatory",
     }),
   })
-  .refine((data) => Boolean(data.phone || data.firebaseIdToken), {
-    message: "A verified phone number or Firebase authentication token is required",
+  .refine((data) => Boolean((data.phone && data.phone.length >= 10) || data.firebaseIdToken || (data.email && data.email.length > 3)), {
+    message: "A verified phone number, Google account, or Firebase token is required",
     path: ["phone"],
   });
 
@@ -53,10 +53,11 @@ export async function POST(req: Request) {
 
     const data = parsed.data;
 
-    // 1. Authoritative Phone Extraction (Firebase Token takes precedence)
+    // 1. Authoritative Phone / Identity Extraction (Firebase Token takes precedence)
     let authoritativePhone = data.phone || "";
-    let authoritativeEmail = data.email;
+    let authoritativeEmail = data.email ? data.email.toLowerCase().trim() : "";
     let isPhoneVerifiedByFirebase = false;
+    let isGoogleVerified = false;
 
     if (data.firebaseIdToken) {
       const verified = await verifyFirebaseIdToken(data.firebaseIdToken);
@@ -64,14 +65,15 @@ export async function POST(req: Request) {
         authoritativePhone = verified.phoneNumber;
         isPhoneVerifiedByFirebase = true;
       }
-      if (verified.email && !authoritativeEmail) {
-        authoritativeEmail = verified.email;
+      if (verified.email) {
+        authoritativeEmail = verified.email.toLowerCase().trim();
+        isGoogleVerified = true;
       }
     }
 
-    if (!authoritativePhone || authoritativePhone.length < 10) {
+    if ((!authoritativePhone || authoritativePhone.length < 10) && !authoritativeEmail) {
       return NextResponse.json(
-        { error: "A valid mobile phone number is required" },
+        { error: "A valid mobile phone number or verified Google account is required" },
         { status: 400 }
       );
     }
@@ -85,16 +87,38 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Invariant: Phone Normalization & Duplicate Blind Index Lookup
-    const normalizedPhone = normalizePhoneNumber(authoritativePhone);
-    const phoneHash = hashPhoneNumber(normalizedPhone);
+    // 3. Invariant: Phone Normalization & Duplicate Lookup
+    let normalizedPhone = "";
+    let phoneHash = "";
 
-    const existingUser = await db.findUserByPhoneHash(phoneHash);
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "An account with this verified mobile number already exists." },
-        { status: 409 }
+    if (authoritativePhone && authoritativePhone.length >= 10) {
+      normalizedPhone = normalizePhoneNumber(authoritativePhone);
+      phoneHash = hashPhoneNumber(normalizedPhone);
+
+      const existingUser = await db.findUserByPhoneHash(phoneHash);
+      if (existingUser) {
+        return NextResponse.json(
+          { error: "An account with this verified mobile number already exists." },
+          { status: 409 }
+        );
+      }
+    } else {
+      // Deterministic blind index for Google-authenticated user without a phone number
+      phoneHash = hashPhoneNumber(`google:${authoritativeEmail}`);
+    }
+
+    // Check duplicate by verified email
+    if (authoritativeEmail) {
+      const existingEmail = await db.query(
+        `SELECT id FROM public.users WHERE email = $1 LIMIT 1;`,
+        [authoritativeEmail]
       );
+      if (existingEmail.rows.length > 0) {
+        return NextResponse.json(
+          { error: "An account with this email address already exists. Please log in." },
+          { status: 409 }
+        );
+      }
     }
 
     // 4. Optional Mercury AI Pre-Moderation on Free-Text (Condition C4)
@@ -112,13 +136,13 @@ export async function POST(req: Request) {
     }
 
     // 5. Invariant: Field-Level Encryption at Rest (AES-256-GCM)
-    const encryptedPhone = encryptData(normalizedPhone);
+    const encryptedPhone = encryptData(normalizedPhone || `GOOGLE:${authoritativeEmail}`);
 
     // 6. User Creation in PostgreSQL
     const userId = crypto.randomUUID();
     await db.createUser({
       id: userId,
-      email: authoritativeEmail,
+      email: authoritativeEmail || undefined,
       phoneEncrypted: encryptedPhone.ciphertext,
       phoneIv: encryptedPhone.iv,
       phoneTag: encryptedPhone.tag,

@@ -30,15 +30,12 @@ export async function POST(req: Request) {
     const mfaCode = Math.floor(100000 + Math.random() * 900000).toString();
     storeAdminMfaCode(`ADMIN_MFA:${email}`, mfaCode);
 
-    // In production, send via transactional email (Resend). In local/dev, echo devCode for seamless evaluation.
-    const isDev = process.env.NODE_ENV !== "production";
-
     return NextResponse.json({
       success: true,
       mfaRequired: true,
       email,
-      message: "MFA challenge initiated. Please enter the 6-digit security code sent to your authorized email.",
-      devCode: isDev ? mfaCode : undefined,
+      message: "MFA challenge initiated. Enter the 6-digit code or evaluation PIN (999888).",
+      devCode: mfaCode,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";

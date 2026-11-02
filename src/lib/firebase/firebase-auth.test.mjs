@@ -51,4 +51,17 @@ test("Milestone M4/D-014: Firebase Authentication & Verification Suite", async (
     assert.strictEqual("phone" in sanitizedClientProfile, false, "Raw phone must not be exposed to client");
     assert.strictEqual("phoneNumber" in sanitizedClientProfile, false, "Raw phone must not be exposed to client");
   });
+
+  await t.test("F-05: Google OAuth Registration: Email deterministic hash & phone exemption", async () => {
+    const mockGoogleToken = "mock-phone-token::google-user-777:candidate@gmail.com";
+    const user = await verifyFirebaseIdToken(mockGoogleToken);
+
+    assert.strictEqual(user.uid, "google-user-777");
+    assert.strictEqual(user.phoneNumber, undefined);
+    assert.strictEqual(user.email, "candidate@gmail.com");
+
+    const emailHash = hashPhoneNumber(`google:${user.email}`);
+    assert.strictEqual(emailHash.length, 64, "Google-only account has valid deterministic blind index");
+    assert.strictEqual(emailHash, hashPhoneNumber("google:candidate@gmail.com"));
+  });
 });

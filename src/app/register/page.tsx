@@ -170,21 +170,19 @@ export default function RegisterPage() {
       setFirebaseIdToken(token);
 
       const googlePhone = res.user.phoneNumber ? res.user.phoneNumber.replace(/\D/g, "").slice(-10) : "";
+      const googleEmail = res.user.email || "";
+      const googleName = res.user.displayName || "";
 
       setFormData((prev) => ({
         ...prev,
-        firstName: prev.firstName || res.user.displayName || "",
-        email: prev.email || res.user.email || "",
+        firstName: prev.firstName || googleName,
+        email: googleEmail || prev.email,
         phone: googlePhone || prev.phone,
-        otpVerified: Boolean(googlePhone),
+        otpVerified: true,
       }));
 
-      if (googlePhone) {
-        setStep(4);
-      } else {
-        // Prompt for 10-digit phone number if Google account did not supply one
-        setError("Google account linked! Please enter your 10-digit mobile number below to complete OTP verification.");
-      }
+      // Directly advance to Step 4 (Declaration & Consent)
+      setStep(4);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Google sign-in error";
       if (msg.includes("popup-closed-by-user") || msg.includes("cancelled-popup-request")) {
@@ -229,7 +227,7 @@ export default function RegisterPage() {
           state: formData.state,
           city: formData.city,
           subCommunity: formData.subCommunity || undefined,
-          phone: formData.phone,
+          phone: formData.phone || undefined,
           firebaseIdToken: firebaseIdToken || undefined,
           email: formData.email || undefined,
           communityDeclaration: formData.communityDeclaration,
@@ -457,7 +455,7 @@ export default function RegisterPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-plum text-base">{t("register.step3")}</h3>
-                <p className="text-xs text-charcoal-light">Google/Firebase verified phone login</p>
+                <p className="text-xs text-charcoal-light">Google Sign-In or Mobile OTP Verification</p>
               </div>
               <span className="inline-flex items-center text-2xs px-2.5 py-1 rounded-full bg-forest-50 text-forest font-semibold border border-forest-200">
                 <ShieldCheck className="w-3.5 h-3.5 mr-1" />
