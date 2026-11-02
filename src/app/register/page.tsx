@@ -3,8 +3,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n/context";
-import { ShieldCheck, UserCheck, CheckCircle2, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
+import { ShieldCheck, UserCheck, CheckCircle2, AlertCircle, ArrowLeft, ArrowRight, Phone, Check } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import type { ConfirmationResult } from "firebase/auth";
 
 export default function RegisterPage() {
   const { t } = useTranslation();
@@ -34,6 +35,8 @@ export default function RegisterPage() {
 
   const [otpSent, setOtpSent] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [firebaseIdToken, setFirebaseIdToken] = useState<string | null>(null);
   const [registeredProfile, setRegisteredProfile] = useState<{ publicId: string } | null>(null);
 
   const calculateAge = (dobString: string): number => {
@@ -73,23 +76,36 @@ export default function RegisterPage() {
     setStep(3);
   };
 
-  const handleSendOtp = async () => {
+  // Firebase Phone Auth: Send verification code via Google/Firebase
+  const handleSendFirebasePhoneOtp = async () => {
     setError(null);
-    if (!formData.phone || formData.phone.length < 10) {
+    const cleanDigits = formData.phone.replace(/\D/g, "");
+    if (cleanDigits.length < 10) {
       setError("Please enter a valid 10-digit mobile number");
       return;
     }
+
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: formData.phone, channel: "phone" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send OTP");
+      const { auth, RecaptchaVerifier, signInWithPhoneNumber } = await import("@/lib/firebase/client");
+
+      let appVerifier = (window as any).recaptchaVerifier;
+      if (!appVerifier) {
+        appVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+          size: "invisible",
+          callback: () => {
+            // reCAPTCHA solved
+          },
+        });
+        (window as any).recaptchaVerifier = appVerifier;
+      }
+
+      const formattedPhone = `+91${cleanDigits.slice(-10)}`;
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
+      setConfirmationResult(confirmation);
       setOtpSent(true);
       setOtpTimer(60);
+
       const timer = setInterval(() => {
         setOtpTimer((prev) => {
           if (prev <= 1) {
@@ -100,32 +116,69 @@ export default function RegisterPage() {
         });
       }, 1000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error sending OTP";
+      const msg = err instanceof Error ? err.message : "Error sending Firebase phone verification";
+      setError(msg);
+      if ((window as any).recaptchaVerifier) {
+        try {
+          (window as any).recaptchaVerifier.clear();
+        } catch {}
+        (window as any).recaptchaVerifier = null;
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Firebase Phone Auth: Confirm 6-digit verification code
+  const handleVerifyFirebaseOtp = async () => {
+    setError(null);
+    if (!formData.otp || formData.otp.trim().length !== 6) {
+      setError("Please enter the 6-digit code received via SMS");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (!confirmationResult) {
+        throw new Error("No pending verification. Please request a new code.");
+      }
+
+      const credential = await confirmationResult.confirm(formData.otp.trim());
+      const token = await credential.user.getIdToken();
+      setFirebaseIdToken(token);
+      setFormData((prev) => ({ ...prev, otpVerified: true }));
+      setStep(4);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid code. Please try again.";
       setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyOtp = async () => {
+  // Google Sign-In Alternative
+  const handleGoogleSignIn = async () => {
     setError(null);
-    if (!formData.otp || formData.otp.length !== 6) {
-      setError("Please enter a 6-digit OTP code");
-      return;
-    }
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: formData.phone, otp: formData.otp }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Invalid OTP code");
-      setFormData((prev) => ({ ...prev, otpVerified: true }));
-      setStep(4);
+      const { auth, googleProvider, signInWithPopup } = await import("@/lib/firebase/client");
+      const res = await signInWithPopup(auth, googleProvider);
+      const token = await res.user.getIdToken();
+      setFirebaseIdToken(token);
+
+      setFormData((prev) => ({
+        ...prev,
+        firstName: prev.firstName || res.user.displayName || "",
+        email: prev.email || res.user.email || "",
+        phone: res.user.phoneNumber ? res.user.phoneNumber.replace(/\D/g, "").slice(-10) : prev.phone,
+        otpVerified: Boolean(res.user.phoneNumber),
+      }));
+
+      if (res.user.phoneNumber) {
+        setStep(4);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid OTP";
+      const msg = err instanceof Error ? err.message : "Google sign-in error";
       setError(msg);
     } finally {
       setLoading(false);
@@ -159,6 +212,7 @@ export default function RegisterPage() {
           city: formData.city,
           subCommunity: formData.subCommunity || undefined,
           phone: formData.phone,
+          firebaseIdToken: firebaseIdToken || undefined,
           email: formData.email || undefined,
           communityDeclaration: formData.communityDeclaration,
           consentTerms: formData.consentTerms,
@@ -180,6 +234,7 @@ export default function RegisterPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
+      <div id="recaptcha-container"></div>
       <div className="bg-white rounded-3xl border border-warmgrey shadow-md p-6 sm:p-10 space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
@@ -201,63 +256,72 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {/* Error Alert */}
         {error && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start space-x-2">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div className="p-4 rounded-xl bg-burgundy-50 border border-burgundy-200 text-burgundy-900 text-xs sm:text-sm flex items-start space-x-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-burgundy-700" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* Step 1: Managed By */}
+        {/* Step 1: Profile Manager */}
         {step === 1 && (
           <div className="space-y-6">
-            <h3 className="font-semibold text-plum text-base">{t("register.step1")}</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <h3 className="font-semibold text-plum text-base">{t("register.step1")}</h3>
+              <p className="text-xs text-charcoal-light">Who are you creating this profile for?</p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
-                { key: "SELF", label: t("register.managedBy.SELF") },
-                { key: "SON", label: t("register.managedBy.SON") },
-                { key: "DAUGHTER", label: t("register.managedBy.DAUGHTER") },
-                { key: "BROTHER", label: t("register.managedBy.BROTHER") },
-                { key: "SISTER", label: t("register.managedBy.SISTER") },
-                { key: "RELATIVE", label: t("register.managedBy.RELATIVE") },
+                { id: "SELF", label: t("manager.self") },
+                { id: "SON", label: t("manager.son") },
+                { id: "DAUGHTER", label: t("manager.daughter") },
+                { id: "BROTHER", label: t("manager.brother") },
+                { id: "SISTER", label: t("manager.sister") },
+                { id: "RELATIVE", label: t("manager.relative") },
               ].map((item) => (
                 <button
-                  key={item.key}
+                  key={item.id}
                   type="button"
-                  onClick={() => setFormData({ ...formData, managedBy: item.key })}
-                  className={`p-4 rounded-xl border text-sm font-medium text-left transition ${
-                    formData.managedBy === item.key
-                      ? "border-plum bg-plum-50 text-plum-900 font-bold shadow-2xs"
-                      : "border-warmgrey hover:border-gold-400 text-charcoal"
+                  onClick={() => setFormData({ ...formData, managedBy: item.id })}
+                  className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between ${
+                    formData.managedBy === item.id
+                      ? "border-plum bg-plum-50 text-plum font-bold ring-2 ring-plum/20"
+                      : "border-warmgrey bg-white text-charcoal hover:border-plum-300"
                   }`}
                 >
-                  {item.label}
+                  <span className="text-sm font-semibold">{item.label}</span>
+                  <span className="text-2xs text-charcoal-light mt-1">Profile Manager</span>
                 </button>
               ))}
             </div>
 
-            <button
-              onClick={handleNextStep1}
-              className="w-full py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center space-x-2"
-            >
-              <span>{t("common.next")}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            <div className="pt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={handleNextStep1}
+                className="px-6 py-3 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl flex items-center space-x-2 shadow-sm transition"
+              >
+                <span>{t("common.next")}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Step 2: Personal Details */}
+        {/* Step 2: Basic Details */}
         {step === 2 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-plum text-base">{t("register.step2")}</h3>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-charcoal">{t("register.firstName")} *</label>
+              <label className="text-xs font-semibold text-charcoal">{t("register.name")} *</label>
               <input
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                placeholder="e.g. Ramesh / Sunita"
+                placeholder="Candidate Full Name"
                 className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
               />
             </div>
@@ -267,8 +331,8 @@ export default function RegisterPage() {
                 <label className="text-xs font-semibold text-charcoal">{t("register.gender")} *</label>
                 <select
                   value={formData.gender}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
+                  onChange={(e) => setFormData({ ...formData, gender: e.target.value as "MALE" | "FEMALE" })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm bg-white"
                 >
                   <option value="MALE">{t("register.male")}</option>
                   <option value="FEMALE">{t("register.female")}</option>
@@ -281,34 +345,36 @@ export default function RegisterPage() {
                   type="date"
                   value={formData.dob}
                   onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm bg-white"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-charcoal">{t("register.maritalStatus")}</label>
-                <select
-                  value={formData.maritalStatus}
-                  onChange={(e) => setFormData({ ...formData, maritalStatus: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
-                >
-                  <option value="NEVER_MARRIED">{t("register.maritalOptions.NEVER_MARRIED")}</option>
-                  <option value="DIVORCED">{t("register.maritalOptions.DIVORCED")}</option>
-                  <option value="WIDOWED">{t("register.maritalOptions.WIDOWED")}</option>
-                  <option value="AWAITING_DIVORCE">{t("register.maritalOptions.AWAITING_DIVORCE")}</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-charcoal">{t("register.height")}</label>
+                <label className="text-xs font-semibold text-charcoal">{t("profile.height")}</label>
                 <input
                   type="number"
+                  min={120}
+                  max={230}
                   value={formData.heightCm}
                   onChange={(e) => setFormData({ ...formData, heightCm: Number(e.target.value) })}
                   className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-charcoal">{t("profile.maritalStatus")}</label>
+                <select
+                  value={formData.maritalStatus}
+                  onChange={(e) => setFormData({ ...formData, maritalStatus: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm bg-white"
+                >
+                  <option value="NEVER_MARRIED">{t("profile.neverMarried")}</option>
+                  <option value="DIVORCED">{t("profile.divorced")}</option>
+                  <option value="WIDOWED">{t("profile.widowed")}</option>
+                  <option value="AWAITING_DIVORCE">{t("profile.awaitingDivorce")}</option>
+                </select>
               </div>
             </div>
 
@@ -319,6 +385,7 @@ export default function RegisterPage() {
                   type="text"
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                  placeholder="e.g. Uttar Pradesh, MP"
                   className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
               </div>
@@ -329,10 +396,21 @@ export default function RegisterPage() {
                   type="text"
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  placeholder="e.g. Indore / Agra"
+                  placeholder="e.g. Indore, Lucknow"
                   className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-charcoal">{t("register.subCommunity")}</label>
+              <input
+                type="text"
+                value={formData.subCommunity}
+                onChange={(e) => setFormData({ ...formData, subCommunity: e.target.value })}
+                placeholder="e.g. Dhangar, Nikhar, Holkar (Optional)"
+                className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm"
+              />
             </div>
 
             <div className="flex items-center space-x-3 pt-4">
@@ -346,7 +424,7 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={handleNextStep2}
-                className="w-2/3 py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center space-x-2"
+                className="w-2/3 py-3 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
               >
                 <span>{t("common.next")}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -355,11 +433,56 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {/* Step 3: Contact & OTP Verification */}
+        {/* Step 3: Firebase Phone Authentication */}
         {step === 3 && (
-          <div className="space-y-4">
-            <h3 className="font-semibold text-plum text-base">{t("register.step3")}</h3>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-plum text-base">{t("register.step3")}</h3>
+                <p className="text-xs text-charcoal-light">Google/Firebase verified phone login</p>
+              </div>
+              <span className="inline-flex items-center text-2xs px-2.5 py-1 rounded-full bg-forest-50 text-forest font-semibold border border-forest-200">
+                <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                Firebase Auth
+              </span>
+            </div>
 
+            {/* Google Alternative Button */}
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full py-3 px-4 rounded-xl border border-warmgrey hover:bg-ivory text-charcoal font-semibold text-sm flex items-center justify-center space-x-3 transition shadow-2xs"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            <div className="relative flex items-center justify-center">
+              <div className="border-t border-warmgrey w-full"></div>
+              <span className="bg-white px-3 text-2xs uppercase tracking-wider text-charcoal-light font-semibold">
+                Or with Phone Number
+              </span>
+            </div>
+
+            {/* Mobile Input */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-charcoal">{t("register.phone")} *</label>
               <div className="flex space-x-2">
@@ -378,20 +501,21 @@ export default function RegisterPage() {
                 {!otpSent && (
                   <button
                     type="button"
-                    onClick={handleSendOtp}
+                    onClick={handleSendFirebasePhoneOtp}
                     disabled={loading || formData.phone.length < 10}
                     className="px-4 py-2.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-medium text-xs rounded-xl transition whitespace-nowrap shadow-2xs"
                   >
-                    {loading ? t("common.loading") : t("auth.sendOtp")}
+                    {loading ? t("common.loading") : "Send Code"}
                   </button>
                 )}
               </div>
             </div>
 
+            {/* Firebase Code Verification Box */}
             {otpSent && (
-              <div className="space-y-2 p-4 rounded-xl bg-plum-50 border border-plum-200">
+              <div className="space-y-3 p-5 rounded-2xl bg-plum-50 border border-plum-200">
                 <label className="text-xs font-semibold text-plum-900 block">
-                  {t("auth.enterOtp")} ({t("auth.otpSentTo")} +91 {formData.phone})
+                  Enter 6-digit SMS verification code sent to +91 {formData.phone}
                 </label>
                 <div className="flex space-x-2">
                   <input
@@ -404,7 +528,7 @@ export default function RegisterPage() {
                   />
                   <button
                     type="button"
-                    onClick={handleVerifyOtp}
+                    onClick={handleVerifyFirebaseOtp}
                     disabled={loading || formData.otp.length !== 6}
                     className="px-5 py-2.5 bg-plum hover:bg-plum-800 disabled:bg-warmgrey text-white font-semibold text-xs rounded-xl shadow-xs transition"
                   >
@@ -413,22 +537,24 @@ export default function RegisterPage() {
                 </div>
                 {otpTimer > 0 ? (
                   <p className="text-xs text-plum-700">
-                    {t("auth.resendIn")} {otpTimer} {t("auth.seconds")}
+                    Resend code in {otpTimer} seconds
                   </p>
                 ) : (
                   <button
                     type="button"
-                    onClick={handleSendOtp}
+                    onClick={handleSendFirebasePhoneOtp}
                     className="text-xs text-plum-700 font-semibold underline"
                   >
-                    {t("auth.resendOtp")}
+                    Resend code
                   </button>
                 )}
               </div>
             )}
 
             <div className="space-y-1 pt-2">
-              <label className="text-xs font-semibold text-charcoal">{t("register.email")} ({t("common.optional")})</label>
+              <label className="text-xs font-semibold text-charcoal">
+                {t("register.email")} ({t("common.optional")})
+              </label>
               <input
                 type="email"
                 value={formData.email}
@@ -446,6 +572,16 @@ export default function RegisterPage() {
               >
                 {t("common.back")}
               </button>
+              {formData.otpVerified && (
+                <button
+                  type="button"
+                  onClick={() => setStep(4)}
+                  className="w-2/3 py-3 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition"
+                >
+                  <span>Continue</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         )}

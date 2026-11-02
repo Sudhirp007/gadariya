@@ -1,6 +1,6 @@
 import pg from "pg";
 import fs from "fs";
-import { encryptData, decryptData } from "../crypto";
+import { encryptData, decryptData } from "../crypto/index.ts";
 const { Pool } = pg;
 
 // Global singleton pool across hot reloads in Next.js development

@@ -11,13 +11,13 @@ Each feature carries an ID, priority, acceptance criteria, and dependencies. Thi
 | ID | Feature | Priority | Acceptance criteria | Depends on |
 | -- | ------- | -------- | -------------------- | ---------- |
 | A-01 | Mobile registration (India/NRI country codes) | P0 | Register with country code + phone; phone stored encrypted with lookup hash | — |
-| A-02 | OTP verification | P0 | OTP sent to verified phone; expires; attempt-limited; never echoed in API | A-01 |
+| A-02 | Firebase phone verification | P0 | Phone verified via Firebase Phone Authentication (Google/Firebase); verification token validated server-side; never echoed in API | A-01 |
 | A-03 | Consent capture | P0 | Terms + privacy accepted; optional marketing opt-in as separate consent; timestamped | A-02 |
 | A-04 | Account type selection | P0 | Self / son / daughter / brother/sister / relative/guardian | A-03 |
 | A-05 | Login / logout / session refresh | P0 | Secure session; logout revokes; refresh short-lived | A-02 |
 | A-06 | Underage rejection | P0 | DOB < 18 rejected at registration and profile creation | A-04 |
 | A-07 | Duplicate account handling | P0 | Same verified phone cannot create second account; secure linking/notice | A-02 |
-| A-08 | OTP abuse protection | P0 | Rate-limit per phone/IP; lockout after N failures; admin unlock | A-02 |
+| A-08 | Auth abuse protection | P0 | Firebase handles rate-limit/lockout server-side; app enforces per-IP limits; admin unlock | A-02 |
 | A-09 | Progressive profile completion score | P1 | Score increments as fields complete; informational only | — |
 | A-10 | Account deletion request | P0 | User-initiated deletion workflow with retention control | — |
 | A-11 | Email (optional) verification | P1 | Optional email capture + verify for recovery/notifications | A-05 |
@@ -73,7 +73,7 @@ Each feature carries an ID, priority, acceptance criteria, and dependencies. Thi
 
 | ID | Feature | Priority | Acceptance criteria | Depends on |
 | -- | ------- | -------- | -------------------- | ---------- |
-| E-01 | Mobile verification badge | P0 | Badge only after successful OTP; timestamped; distinct from ID verification | A-02 |
+| E-01 | Mobile verification badge | P0 | Badge only after successful Firebase phone verification; timestamped; distinct from ID verification | A-02 |
 | E-02 | Selfie submission | P0 | Secure selfie upload; stored separately; retention-limited | B-07 |
 | E-03 | Admin selfie review | P0 | Admin compares selfie to profile photo; approve/reject/expire/revoke | E-02 |
 | E-04 | Optional identity check | P1 | Provider reference + outcome stored; no ID copy kept when avoidable; Aadhaar never mandatory | E-03 |
@@ -107,7 +107,7 @@ Each feature carries an ID, priority, acceptance criteria, and dependencies. Thi
 | G-05 | Rate limits on interests/messages | P0 | Per-user caps; anti-spam | G-01, G-04 |
 | G-06 | Block | P0 | Blocked pair cannot interact; cannot reconnect via new account | G-01 |
 | G-07 | Report | P0 | Report → admin queue; category + description | G-01, Admin |
-| G-08 | Notifications (SMS/email) | P1 | Interest, biodata, contact-exchange, verification events | — |
+| G-08 | Notifications (email) | P1 | Interest, biodata, contact-exchange, verification events | — |
 
 ---
 

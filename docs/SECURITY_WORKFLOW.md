@@ -21,8 +21,8 @@
 
 ## 2. Authentication & session security
 
-- **Login:** OTP-based (P0) + optional password (later). OTP is single-use, time-limited, never returned by any API.
-- **OTP abuse controls:** rate-limit per phone and per IP; exponential backoff; lockout after N failures; challenge expiry; admin unlock with audit.
+- **Login:** Firebase Phone Authentication (Google/Firebase) — phone-sign-in OTP verified by Firebase (P0) + optional password (later). Verification token validated server-side; never returned by any API.
+- **Auth abuse controls:** Firebase enforces per-phone verification rate limits and lockout; app adds per-IP rate limiting; admin unlock with audit.
 - **Sessions:** short-lived access + refresh; `HttpOnly` + `Secure` + `SameSite` cookies; user-agent/device binding; logout revokes; idle timeout.
 - **Password hashing (when added):** Argon2id.
 - **Admin:** separate admin app; **MFA mandatory**; session risk checks.
@@ -33,7 +33,7 @@
 
 | Level | Flow | Security point |
 | ----- | ---- | -------------- |
-| Mobile | OTP validated → timestamped badge | Never presented as identity verification |
+| Mobile | Firebase phone verification validated → timestamped badge | Never presented as identity verification |
 | Selfie | User submits selfie via secure upload → admin reviews against profile photo → approve/reject/expire | Selfie stored separately; original kept only per retention policy; never shown to members |
 | Identity (optional) | Compliant provider → store reference + outcome; avoid storing ID copies | Aadhaar never mandatory; ID never exposed |
 | Admin review | Manual profile review | Logged; reason required for reject/suspend |
@@ -97,7 +97,7 @@ INITIATED ──► A_APPROVED ──► BOTH_APPROVED ──► DISCLOSED
 ## 8. Audit & logging
 
 Logged events (append-only, tamper-evident where practical):
-- Authentication events (login, OTP, lockout, logout, session revoke).
+- Authentication events (login, Firebase verification, lockout, logout, session revoke).
 - Every consent grant/withdrawal (purpose, timestamp, policy version).
 - Every biodata share approve/revoke/expiry.
 - Every contact-exchange disclosure (who, what, to whom, when).
@@ -132,7 +132,7 @@ Pre-agree a response runbook and a legal point of contact before launch.
 | Access / correction | User can view and correct stored data |
 | Erasure | Account-deletion request + retention policy; soft→permanent delete |
 | Data breach | Incident response + notification process |
-| Third-party processors | Documented processor agreements (SMS, verification, hosting, email) |
+| Third-party processors | Documented processor agreements (Firebase Auth, verification, hosting, email) |
 | Grievance | Transparent support/grievance channel; accountability |
 | Overseas transfers | Assess applicable jurisdictions when serving NRI members |
 
@@ -144,7 +144,7 @@ Pre-agree a response runbook and a legal point of contact before launch.
 
 - [ ] HTTPS + HSTS live; TLS in transit; encryption at rest.
 - [ ] Phone numbers encrypted; no phone in any discovery/response payload.
-- [ ] OTP rate-limited + expiring; never echoed.
+- [ ] Firebase phone verification enforced; never echoed; server-side token validated.
 - [ ] Underage rejected; Aadhaar not mandatory.
 - [ ] Sensitive endpoints all server-side authorized (no frontend-only checks).
 - [ ] Photos/biodata/contact gated; dual-approval enforced; payment never overrides.

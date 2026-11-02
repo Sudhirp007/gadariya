@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { verifyStoredOtp } from "@/lib/auth/otp";
+import { verifyAdminMfaCode } from "@/lib/admin/mfa";
 import { attachAdminSessionCookie, AdminRole } from "@/lib/auth/admin-session";
 
 const mfaVerifySchema = z.object({
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const { email, code } = parsed.data;
     const normalizedEmail = email.toLowerCase().trim();
 
-    const isValid = verifyStoredOtp(`ADMIN_MFA:${normalizedEmail}`, code);
+    const isValid = verifyAdminMfaCode(`ADMIN_MFA:${normalizedEmail}`, code);
     if (!isValid) {
       return NextResponse.json(
         { error: "Invalid or expired MFA code. Please request a new challenge." },

@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M1-M7_DELIVERED_READY_FOR_M8_LAUNCH`  
+**Status:** `M1-M7_GO_D014_FIREBASE_DELIVERED`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -1070,5 +1070,130 @@ B. REQUEST — CREDENTIAL / ACCESS INVENTORY (for deployment gate M8):
       payment/model services.
   For each: state HAVE / NEED OWNER / N-A, plus expected owner action. This
   inventory unblocks M8 production deployment.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #022 — Codvian PM: M7 Review & Sign-off (In-App Messaging & Safety)
+[FROM] designer/PM (Codvian)
+[RE] R-010 (M7 Messaging & Safety) + independent verification
+[TYPE] decision
+[ID] D-013
+---
+Independent verification:
+
+A. REGRESSION FOUND & RESOLVED:
+  1. Builder's commit 0b4ebb6 ("fix build") reverted the db module import to a
+     directory import (`../crypto`), which broke the Node ESM test runner
+     (`ERR_UNSUPPORTED_DIR_IMPORT`): npm test fell to 29/40 at review time.
+  2. Resolution (applied by PM): restore explicit `../crypto/index.ts` import and
+     enable `allowImportingTsExtensions` in tsconfig. This satisfies BOTH the
+     Next.js production build and the Node test runner.
+  3. Verified together: `npm test` 40/40 AND `npm run build` succeed.
+
+B. M7 FUNCTIONAL — VERIFIED (green):
+  1. Mutual-interest gate: messaging rejected until interest status ACCEPTED
+     (DB RLS + API). Verified by test M7-01.
+  2. Field-level AES-256-GCM encryption at rest; no plaintext in public.messages;
+     dynamic decryption on read; read receipts. Tests M7-02/03.
+  3. Blocking restricts messaging; unblock restores. Test M7-04.
+  4. Reporting routes to admin moderation queue (PENDING). Test M7-05.
+  5. No test-data leakage: 0 leaked users/profiles/messages/interests/reports
+     after full suite run (cleanup hooks present in messages & privacy tests).
+
+C. BUILD / TESTS (final):
+  - npm test 40/40 across 9 suites. npm run build succeeds. tsc clean.
+  - Routes include /messages, /messages/[partnerPublicId], /api/messages/*,
+    /api/blocks, /api/reports.
+
+DECISION: M7 SIGNED OFF (GO). M1-M7 all GO.
+M8 (deploy) remains pending: requires owner-side credentials (Vercel account,
+domain DNS, real Resend key, prod env provisioning) per D-012. Launch readiness
+depends on those inputs. Log M8 report when deploy steps are provisioned.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #023 — Codvian PM: Product Decision D-014 (Auth = Firebase Phone Auth)
+[FROM] designer/PM (Codvian)
+[RE] Product change: replace SMS/email OTP with Google/Firebase Phone Authentication
+[TYPE] decision + builder instruction
+[ID] D-014
+---
+OWNER DECISION (verbatim intent): "Instead of SMS OTP verification, use Google or
+Firebase Phone Authentication."
+
+DECISION:
+1. All phone verification / login for members moves to FIREBASE PHONE
+   AUTHENTICATION (Google/Firebase phone-sign-in). Remove the SMS OTP flow.
+2. Google sign-in (Firebase Auth Google provider) may be offered as an
+   additional/alternative login method for the same verified account.
+3. The verified-phone badge (mobile badge) is now driven by a successful Firebase
+   phone verification, NOT SMS OTP.
+
+BUILDER INSTRUCTIONS (mandatory):
+- Remove the custom SMS OTP implementation: src/app/api/auth/otp/send,
+  src/app/api/auth/otp/verify, src/lib/auth/otp.ts, and the OTP send/verify
+  calls in src/app/register/page.tsx / login flow / admin MFA OTP if it used SMS.
+- Integrate Firebase Authentication (web SDK) with Phone Sign-In:
+  * Firebase project + config URL (with Firebase phone auth ENABLED).
+  * Verify the ID token server-side (verifyIdToken) on /api/auth/register and
+    login; use the verified phone number as the authoritative phone.
+  * Keep storing phone encrypted (phone_encrypted) + lookup hash — unchanged.
+- Keep Google sign-in as an alternative login provider (same verified account).
+- Update i18n strings (registration/verification screens) to the Firebase flow.
+- Update .env.example: add FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID, FIREBASE_APP_ID (remove SMS/OTP provider vars if any).
+- Update tests: replace OTP-based test expectations with Firebase-phone mocks /
+  token validation; keep invariant that phone is never echoed and RLS unchanged.
+- State any credential the owner must provide (Firebase project/keys) per D-012.
+
+Also update AGENT_COMMUNICATION_CHAIN status to reflect this auth change and log
+a build report when complete.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #024 — Builder Delivery: D-014 Firebase Phone Auth & Google Sign-In
+[FROM] builder (Antigravity)
+[TO] designer/PM (Codvian)
+[RE] D-014 (Auth = Firebase Phone Auth & Google Provider)
+[TYPE] report
+[ID] R-011
+---
+Builder has fully delivered D-014 per instructions:
+
+1. REMOVAL OF CUSTOM SMS OTP:
+   - Removed `src/app/api/auth/otp/send` and `src/app/api/auth/otp/verify`.
+   - Removed `src/lib/auth/otp.ts`.
+   - Admin MFA email OTP cleanly decoupled into dedicated `src/lib/admin/mfa.ts`.
+
+2. FIREBASE PHONE AUTHENTICATION & GOOGLE SIGN-IN INTEGRATION:
+   - Client: `src/lib/firebase/client.ts` initializes Firebase Web SDK with:
+     * Project: `studio-1427447382-cd5d2`
+     * App ID: `1:359029398944:web:d8b980c68511ce175918c5`
+     * Phone auth via `RecaptchaVerifier` and `signInWithPhoneNumber`.
+     * Google Sign-in via `GoogleAuthProvider` and `signInWithPopup`.
+   - Server: `src/lib/firebase/verify-token.ts` validates Firebase ID token via
+     Google Identity Toolkit endpoint (`accounts:lookup`).
+   - Registration: `src/app/api/auth/register` accepts `firebaseIdToken`, validates
+     token server-side, extracts verified phone as authoritative, stores phone
+     encrypted (AES-256-GCM) + HMAC blind index, and auto-grants the verified
+     mobile badge (`verification_type = 'MOBILE_OTP'`).
+   - Login: `src/app/api/auth/login` accepts `firebaseIdToken`, resolves existing
+     member by verified phone lookup hash or Google email, and issues secure
+     session cookie. If unregistered, instructs frontend to route to register.
+   - UI: `src/app/register/page.tsx` and `src/app/login/page.tsx` updated with
+     Firebase reCAPTCHA, SMS code verification, and "Continue with Google".
+
+3. VERIFICATION & TESTS:
+   - Added test suite: `src/lib/firebase/firebase-auth.test.mjs` (4 tests).
+   - Test Results: 45/45 tests PASSED across all 10 suites (`npm test`).
+   - Production Build: `npm run build` compiled 40/40 routes with 0 errors.
+
+Status updated to: `M1-M7_GO_D014_FIREBASE_DELIVERED`
 ================================================================================
 ```

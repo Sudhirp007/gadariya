@@ -6,10 +6,10 @@
 - Community: Pal community only (self-declared affiliation, moderation reviewed)
 - Market: India + NRI
 - Manager model: self-managed AND family-managed profiles
-- Verification: mobile OTP + selfie (manual admin review for MVP) + optional ID check
+- Verification: Firebase Phone Authentication (Google/Firebase) + selfie (manual admin review for MVP) + optional ID check
 - Platform: responsive website first; Android/iOS apps later
 - Budget ceiling: ₹3,00,000 · Delivery target: 10–12 weeks
-- Architecture: modular monolith → **Stack:** Next.js (React/TS) + Tailwind/shadcn + NestJS + PostgreSQL/Prisma + private S3-compatible storage + DLT-compliant SMS
+- Architecture: modular monolith → **Stack:** Next.js (React/TS) + Tailwind/shadcn + NestJS + PostgreSQL/Prisma + private S3-compatible storage + Firebase Auth (phone)
 
 ---
 
@@ -43,9 +43,9 @@ Seven sprints, each with a definition-of-done (DoD). Parallel frontend/backend a
 - DoD: `npm run build` and migrations pass on a fresh checkout; staging URL responds over HTTPS.
 
 ### Sprint 1 — Weeks 2–3: Authentication & Registration
-- **Epic 1 (Auth):** mobile OTP send/verify, session login/logout/refresh, rate-limit OTP, duplicate-account handling, consent recording (terms + privacy + optional marketing).
-- **Registration flow:** country-code select → OTP → profile-type (self/son/daughter/brother/sister/relative) → basic biodata → community declaration → visibility prefs → save as draft.
-- DoD: user can register, verify OTP, choose account type, save draft profile; underage rejected; duplicate phone handled; OTP attempts limited; consent timestamps stored.
+- **Epic 1 (Auth):** Firebase Phone Authentication (Google/Firebase) sign-in, session login/logout/refresh, duplicate-account handling, consent recording (terms + privacy + optional marketing).
+- **Registration flow:** country-code select → Firebase Phone Authentication verification → profile-type (self/son/daughter/brother/sister/relative) → basic biodata → community declaration → visibility prefs → save as draft.
+- DoD: user can register, verify phone via Firebase, choose account type, save draft profile; underage rejected; duplicate phone handled; consent timestamps stored.
 
 ### Sprint 2 — Weeks 4–5: Profile & Family Management
 - **Epic 2 (Profile):** biodata edit, photo upload (private storage, moderation `PENDING`), education/career, family details, partner preferences, completion score.
@@ -111,9 +111,9 @@ Release developer payment against these working milestones, not calendar dates:
 | **Subtotal** | **₹2,50,000** |
 | Reserve (SMS/third-party/unforeseen) | ₹50,000 |
 
-**Assumptions to stay under ₹3L:** component library, single responsive web app, no native apps, managed SMS OTP, manual admin selfie verification, optional manual ID check, PostgreSQL search (no OpenSearch), simple admin panel, no advanced chat / no paid AI.
+**Assumptions to stay under ₹3L:** component library, single responsive web app, no native apps, Firebase Phone Authentication, manual admin selfie verification, optional manual ID check, PostgreSQL search (no OpenSearch), simple admin panel, no advanced chat / no paid AI.
 
-**Recurring ops (~₹3,300–8,800/mo):** hosting, PostgreSQL + backups, object storage, SMS/OTP, email, monitoring + domain (annual).
+**Recurring ops (~₹3,300–8,800/mo):** hosting, PostgreSQL + backups, object storage, Firebase Auth (phone), email, monitoring + domain (annual).
 
 ---
 
@@ -143,9 +143,9 @@ Native apps, WhatsApp notifications, horoscope matching, video intros, family gr
 | Risk | Mitigation |
 | ---- | ---------- |
 | Budget overrun | Frozen spec + milestone payments + reserve |
-| Third-party SMS/verification delays | Start provider onboarding in Sprint 0 |
+| Firebase phone auth provisioning delays | Configure Firebase project + phone auth in Sprint 0 |
 | Manual selfie review is slow | Define SLAs + train admins early; add provider later |
-| Fake/duplicate profiles | Mobile OTP + admin review + block/report + audit |
+| Fake/duplicate profiles | Firebase phone verification + admin review + block/report + audit |
 | Privacy incident | See SECURITY_WORKFLOW.md; incident-response runbook |
 | Low initial community density | Launch with word-of-mouth + community sponsors; only verified discoverable |
 

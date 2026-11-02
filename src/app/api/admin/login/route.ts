@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { storeOtp } from "@/lib/auth/otp";
+import { storeAdminMfaCode } from "@/lib/admin/mfa";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
     // Generate 6-digit MFA OTP Challenge
     const mfaCode = Math.floor(100000 + Math.random() * 900000).toString();
-    storeOtp(`ADMIN_MFA:${email}`, mfaCode);
+    storeAdminMfaCode(`ADMIN_MFA:${email}`, mfaCode);
 
     // In production, send via transactional email (Resend). In local/dev, echo devCode for seamless evaluation.
     const isDev = process.env.NODE_ENV !== "production";

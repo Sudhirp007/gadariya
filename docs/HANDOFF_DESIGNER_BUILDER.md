@@ -56,7 +56,7 @@ You (Builder) should treat this document as your active brief. Use **Section 8 (
 - Use a lightweight i18n approach that fits the free stack, e.g. `next-intl` (works with Next.js App Router, free, no SaaS).
 - Structure locale files: `messages/hi.json` and `messages/en.json` (or `locale/hi|en`).
 - Set default locale to `hi`; the toggle switches active locale and persists the choice.
-- All public pages (landing, how-it-works, privacy, terms, registration/OTP screens, dashboard, profile, discovery cards, admin UI labels) must render from the active locale's string table.
+- All public pages (landing, how-it-works, privacy, terms, registration/phone-verification screens, dashboard, profile, discovery cards, admin UI labels) must render from the active locale's string table.
 - Server-side components and API messages should use the locale-aware lookup; keep URL routing clean (e.g., `/` for default locale with an `/en` prefix option or a cookie-based toggle — decide at implementation; propose via protocol if needed).
 - Date/number formatting should follow the active locale.
 - **Do not** use the AI service to translate dynamic user content in MVP; bilingual applies to interface strings only.
@@ -71,9 +71,9 @@ We cut the ₹3L PRD down to the **smallest trust-first product** that proves th
 
 | Area | What we build |
 | ---- | ------------- |
-| Registration | Mobile OTP via free email/OTP provider; profile type (self/son/daughter/relative); basic biodata; Pal community declaration; consent capture |
+| Registration | Firebase Phone Authentication (Google/Firebase); profile type (self/son/daughter/relative); basic biodata; Pal community declaration; consent capture |
 | Profile | Unique public ID, photo upload (private), education/profession, family details, partner preferences, completion % |
-| Verification | Mobile OTP badge (core) + **OPTIONAL selfie verification** (moderator reviews; no paid provider). Selfie is NOT required — many profiles are created by parents/guardians/siblings on behalf of the candidate, so selfie must stay optional. Account creator may differ from the profile person. |
+| Verification | Firebase phone verification badge (core) + **OPTIONAL selfie verification** (moderator reviews; no paid provider). Selfie is NOT required — many profiles are created by parents/guardians/siblings on behalf of the candidate, so selfie must stay optional. Account creator may differ from the profile person. |
 | Discovery | Search/filter by age, city, education, profession, verified-only; pagination; match cards; shortlist |
 | Interests | Send / accept / decline / withdraw; no duplicates; verify-before-send |
 | Privacy | Photo & biodata approval-controlled; phone hidden; request+approve biodata; revoke; watermarked PDF (simple) |
@@ -91,7 +91,7 @@ We cut the ₹3L PRD down to the **smallest trust-first product** that proves th
 - Payments / premium subscriptions / profile boost
 - Identity provider integration (Aadhaar/KYC). — manual admin check only
 - Multi-language, advanced analytics, OpenSearch
-- SMS gateway as dependency (use email OTP to stay free; phone can be an optional field later)
+- SMS gateway dependency (phone auth via Firebase Phone Authentication; no external SMS gateway)
 
 ---
 
@@ -103,9 +103,9 @@ We cut the ₹3L PRD down to the **smallest trust-first product** that proves th
 | Styling | Tailwind CSS + shadcn/ui | Fast, familiar |
 | Backend | Next.js API routes or a tiny Node/NestJS service | Avoids a second paid host; keep monolith |
 | Database | Supabase (PostgreSQL free tier) | Auth, DB, and storage in one free service |
-| Auth/OTP | Supabase Auth (email OTP) | Free; avoids SMS cost |
+| Auth/Phone | Firebase Authentication (Phone Sign-In) | Free tier; verifies phone via Google/Firebase |
 | Storage | Supabase Storage (private buckets) | Photos/watermarked biodata |
-| Email | Resend free tier (100/day) or Supabase email | Notifications/OTP |
+| Email | Resend free tier (100/day) or Supabase email | Notifications only |
 | Hosting | Vercel free tier (frontend + API) | Free, easy; auto-HTTPS + HTTP→HTTPS redirect |
 | Monitoring | Vercel analytics/app, minimal | Keep free |
 | i18n/bilingual | next-intl (or equivalent free lib) | Hindi-primary + English toggle, per-user persisted |
@@ -140,7 +140,7 @@ Build in this order; each milestone is independently runnable and demoable.
 | M | Milestone | Definition of done |
 | - | --------- | ------------------ |
 | M0 | Scaffold & infra | Repo; Next.js + Supabase connected; DB migrations; free-tier hosting staging URL live over HTTPS; **i18n skeleton with hindi (default) + english locale files + toggle** |
-| M1 | Auth & registration | Email OTP send/verify; account type; basic biodata save; underage + duplicate handling; consent recorded |
+| M1 | Auth & registration | Firebase Phone Authentication (verify phone); account type; basic biodata save; underage + duplicate handling; consent recorded |
 | M2 | Profile & family | Edit biodata; photo upload (private); family manager invite/permissions; completion %; submit for review |
 | M3 | Admin core | Admin login + MFA; approval queue; approve/reject; suspend/block; audit log |
 | M4 | Verification | Mobile badge; **optional** selfie upload; admin selfie review; badges display; revoke |
@@ -155,7 +155,7 @@ Build in this order; each milestone is independently runnable and demoable.
 
 1. HTTPS everywhere; encryption at rest and in transit.
 2. Phone numbers encrypted; lookup hash for duplicates; never exposed in any API response.
-3. OTP single-use, time-limited, rate-limited; never echoed.
+3. Firebase phone verification token validated server-side; never echoed; per-IP rate limiting.
 4. Server-side authorization on every sensitive endpoint (frontend never trusted).
 5. Contact-details endpoint verifies **both** approvals before returning data.
 6. Admin MFA; admin actions audited; sensitive access logged with reason.
@@ -222,8 +222,9 @@ OTP + password.
 [TYPE] decision
 [ID] D3
 ---
-Chosen: A — email OTP only for MVP. Add password in a later phase. Keep
-session tokens secure and revocable.
+REVISED (D-014): Firebase Phone Authentication (Google/Firebase) replaces SMS/email
+OTP for MVP. Add password sign-in in a later phase if needed. Keep session tokens
+secure and revocable.
 ```
 
 ---
@@ -246,7 +247,7 @@ The Builder should NOT guess these; ask via protocol when you reach them:
 
 ## 10. Acceptance test checklist (for Builder to run)
 
-- [ ] Register with OTP works; OTP expires; rate-limited.
+- [ ] Register with Firebase Phone Authentication works; verification token validated; rate-limited.
 - [ ] Underage rejected, duplicate phone handled.
 - [ ] Profile created with unique public ID.
 - [ ] Search returns only eligible published profiles; pagination works.
