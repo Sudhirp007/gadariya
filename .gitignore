@@ -35,3 +35,5 @@ Mercury API Key.png
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel

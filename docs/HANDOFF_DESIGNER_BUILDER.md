@@ -40,6 +40,26 @@ You (Builder) should treat this document as your active brief. Use **Section 8 (
    - Underage profiles rejected; Aadhaar never required.
 4. **Build order:** follow Section 6. Do not skip ahead to optional items.
 5. **No fictional data in production.** Use clearly-labeled seed/sample data only for dev.
+6. **Live domain: `http://gadariya.org/`** — the production site must be reachable at this domain.
+   - ⚠️ **Security requirement:** although the user gave `http://`, a matrimonial platform carrying private data **must be served over HTTPS**. Set up SSL/TLS (free via Vercel/Let's Encrypt) with automatic redirect from HTTP → HTTPS. Do not ship production on cleartext HTTP.
+7. **Bilingual requirement (Hindi-primary + English):** the site must support **two languages**:
+   - **Primary: Hindi (hi)** — the default interface language.
+   - **Secondary: English (en)** — a toggle lets the user switch to English.
+   - Language choice is per-user and should persist (e.g., in a cookie / user profile setting).
+   - All UI strings, labels, messages, and public-facing content must be available in both languages.
+   - For MVP: implement the language toggle at the UI level (i18n) for all interface text. Deep content translation (user-generated biodata) is out of scope — only the platform UI/public pages are bilingual.
+
+---
+
+## 2A. Bilingual (i18n) implementation guidance
+
+- Use a lightweight i18n approach that fits the free stack, e.g. `next-intl` (works with Next.js App Router, free, no SaaS).
+- Structure locale files: `messages/hi.json` and `messages/en.json` (or `locale/hi|en`).
+- Set default locale to `hi`; the toggle switches active locale and persists the choice.
+- All public pages (landing, how-it-works, privacy, terms, registration/OTP screens, dashboard, profile, discovery cards, admin UI labels) must render from the active locale's string table.
+- Server-side components and API messages should use the locale-aware lookup; keep URL routing clean (e.g., `/` for default locale with an `/en` prefix option or a cookie-based toggle — decide at implementation; propose via protocol if needed).
+- Date/number formatting should follow the active locale.
+- **Do not** use the AI service to translate dynamic user content in MVP; bilingual applies to interface strings only.
 
 ---
 
@@ -86,8 +106,9 @@ We cut the ₹3L PRD down to the **smallest trust-first product** that proves th
 | Auth/OTP | Supabase Auth (email OTP) | Free; avoids SMS cost |
 | Storage | Supabase Storage (private buckets) | Photos/watermarked biodata |
 | Email | Resend free tier (100/day) or Supabase email | Notifications/OTP |
-| Hosting | Vercel free tier (frontend + API) | Free, easy |
+| Hosting | Vercel free tier (frontend + API) | Free, easy; auto-HTTPS + HTTP→HTTPS redirect |
 | Monitoring | Vercel analytics/app, minimal | Keep free |
+| i18n/bilingual | next-intl (or equivalent free lib) | Hindi-primary + English toggle, per-user persisted |
 
 > If the Builder has a cheaper/better free alternative that meets the same constraints, propose it via the protocol; I will decide.
 
@@ -118,7 +139,7 @@ Build in this order; each milestone is independently runnable and demoable.
 
 | M | Milestone | Definition of done |
 | - | --------- | ------------------ |
-| M0 | Scaffold & infra | Repo; Next.js + Supabase connected; DB migrations; free-tier hosting staging URL live over HTTPS |
+| M0 | Scaffold & infra | Repo; Next.js + Supabase connected; DB migrations; free-tier hosting staging URL live over HTTPS; **i18n skeleton with hindi (default) + english locale files + toggle** |
 | M1 | Auth & registration | Email OTP send/verify; account type; basic biodata save; underage + duplicate handling; consent recorded |
 | M2 | Profile & family | Edit biodata; photo upload (private); family manager invite/permissions; completion %; submit for review |
 | M3 | Admin core | Admin login + MFA; approval queue; approve/reject; suspend/block; audit log |
@@ -218,6 +239,8 @@ The Builder should NOT guess these; ask via protocol when you reach them:
 5. Biodata export: view-only inside platform vs watermarked downloadable PDF? → **default: view inside platform + optional watermarked download**.
 6. Contact-exchange authority when family-managed: owner's approval still required? → **yes, always**.
 7. Deployment target free tier details (Supabase vs other) → ask me if changing.
+8. Bilingual toggle routing: cookie-based locale vs `/en` URL prefix → **default: cookie-based toggle, Hindi default, no URL prefix in MVP** (simpler; revisit at scale).
+9. Real domain `gadariya.org`: confirm DNS + Vercel setup for production when we reach M8 → ask me before configuring.
 
 ---
 
@@ -234,6 +257,9 @@ The Builder should NOT guess these; ask via protocol when you reach them:
 - [ ] Block prevents interaction.
 - [ ] Admin approval + MFA + audit works.
 - [ ] Backups restore-tested; SSL enforced.
+- [ ] Production reachable at `https://gadariya.org` (HTTP auto-redirects to HTTPS).
+- [ ] Default language is Hindi; toggle switches all UI to English and persists per user.
+- [ ] All public/interface strings render in the active locale (no untranslated placeholders).
 
 ---
 
