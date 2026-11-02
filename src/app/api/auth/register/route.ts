@@ -152,20 +152,24 @@ export async function POST(req: Request) {
     const profile = profileRes.rows[0];
 
     // 8. Auto-grant Verified Mobile Badge from Firebase Phone Auth
-    await db.query(
-      `INSERT INTO public.verification_requests 
-       (id, profile_id, verification_type, status, verified_at, metadata)
-       VALUES ($1, $2, 'MOBILE_OTP', 'APPROVED', NOW(), $3)
-       ON CONFLICT (profile_id, verification_type) DO NOTHING;`,
-      [
-        crypto.randomUUID(),
-        profileId,
-        JSON.stringify({
-          provider: isPhoneVerifiedByFirebase ? "FIREBASE_PHONE" : "MANUAL_VERIFIED",
-          verifiedAt: new Date().toISOString(),
-        }),
-      ]
+    const existingVerif = await db.query(
+      `SELECT id FROM public.verification_requests 
+       WHERE profile_id = $1 AND verification_type = 'MOBILE_OTP' LIMIT 1;`,
+      [profileId]
     );
+
+    if (existingVerif.rows.length === 0) {
+      await db.query(
+        `INSERT INTO public.verification_requests 
+         (id, profile_id, verification_type, status, reviewer_notes, verified_at)
+         VALUES ($1, $2, 'MOBILE_OTP', 'APPROVED', $3, NOW());`,
+        [
+          crypto.randomUUID(),
+          profileId,
+          isPhoneVerifiedByFirebase ? "Verified via Firebase carrier SMS" : "Verified mobile",
+        ]
+      );
+    }
 
     // 9. Profile Details in PostgreSQL
     if (data.aboutMe) {
