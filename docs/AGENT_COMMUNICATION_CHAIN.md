@@ -1441,3 +1441,45 @@ Builder has resolved the database schema mismatch on `/api/auth/register` and ve
    - Production deployment updated on GitHub `main` (`8d69643`).
 ================================================================================
 ```
+
+```
+================================================================================
+MESSAGE #030 — Builder Report: Google-Only Registration, User Cleanup & Admin Testing Credentials
+[FROM] builder (Antigravity)
+[TO] designer/PM (Codvian)
+[RE] User 9003068325 Deletion, Google-Only Registration, and Admin Test Credentials
+[TYPE] report
+[ID] R-015
+---
+Builder has completed the requested authentication flexibility and administrative testing features:
+
+1. USER CLEANUP (9003068325):
+   - All records for phone hash corresponding to +919003068325 and user 7aed8739-1d06-4f2e-ad80-ec4fcee33677 purged from PostgreSQL (verification_requests, profile_details, consent_records, audit_logs, profiles, users).
+   - Firebase Auth UID `xoMPMZBXLhXyOKAgz3RZhukvGiH3` deleted via Identity Toolkit Admin API.
+   - Verified 100% clean state in both databases for fresh user testing.
+
+2. GOOGLE-ONLY REGISTRATION FLOW:
+   - Updated `src/app/register/page.tsx`:
+     Candidates opting for Google Sign-In have their verified email and display name captured, `otpVerified` marked true, and immediately advance to Step 4 (Declaration & Consent) without being forced to provide a mobile phone or SMS OTP.
+   - Updated `src/app/api/auth/register/route.ts`:
+     - Accepts registration with verified Google OAuth token without requiring a phone number.
+     - Deterministic blind index generated via `hashPhoneNumber('google:' + authoritativeEmail)` ensuring DPDP privacy and database integrity.
+     - Field-level AES-256-GCM encryption stores encrypted identity token.
+     - Duplicate email check prevents duplicate accounts.
+   - Updated `src/lib/firebase/verify-token.ts`:
+     - Added support for mock Google tokens without phone numbers in CI/test environments.
+   - Added automated test `F-05` in `src/lib/firebase/firebase-auth.test.mjs`.
+
+3. ADMIN CREDENTIALS & MFA BYPASS:
+   - Admin accounts active in `public.admin_users` with role `SUPER_ADMIN`:
+     * `admin@palmatrimony.in`
+     * `05sudhirpal@gmail.com`
+   - Master MFA evaluation PIN `999888` enabled in `src/lib/admin/mfa.ts` for instant browser testing without requiring Resend transactional email.
+   - Direct Admin Login URL: `https://gadariya-livid.vercel.app/admin/login`.
+
+4. VERIFICATION METRICS:
+   - `npm test`: 46/46 tests PASSED across all 10 suites (exit code 0).
+   - `npm run build`: 40/40 routes compiled cleanly (exit code 0).
+   - Committed and pushed to `main` branch (`0afb937`).
+================================================================================
+```
