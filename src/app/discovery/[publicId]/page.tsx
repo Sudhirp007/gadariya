@@ -1,0 +1,279 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useTranslation } from "@/lib/i18n/context";
+import { VerificationBadges } from "@/components/VerificationBadges";
+import {
+  ArrowLeft,
+  GraduationCap,
+  Briefcase,
+  Users,
+  Sliders,
+  Shield,
+  Phone,
+  Lock,
+  Heart,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Sparkles,
+} from "lucide-react";
+
+export default function CandidateDetailPage() {
+  const { t } = useTranslation();
+  const params = useParams();
+  const router = useRouter();
+  const publicId = params.publicId as string;
+
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [contactRequested, setContactRequested] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    async function loadDetail() {
+      try {
+        const res = await fetch(`/api/discovery/${publicId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setProfile(data.profile);
+          if (data.profile?.relationshipState?.contactExchange) {
+            setContactRequested(true);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading candidate profile:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (publicId) loadDetail();
+  }, [publicId]);
+
+  const handleRequestContact = async () => {
+    if (!profile) return;
+    setRequestLoading(true);
+    setMsg(null);
+
+    try {
+      const res = await fetch("/api/contact-exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receiverProfileId: profile.id,
+          disclosePhone: true,
+          discloseEmail: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to initiate request");
+
+      setContactRequested(true);
+      setMsg({ type: "success", text: data.message });
+    } catch (err: unknown) {
+      const errorText = err instanceof Error ? err.message : "Error initiating contact exchange";
+      setMsg({ type: "error", text: errorText });
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <span className="text-xs text-plum font-semibold">Loading candidate biodata...</span>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
+        <h2 className="text-xl font-bold text-plum">Profile Not Available</h2>
+        <p className="text-xs text-charcoal-light">
+          This profile may not be published or does not exist.
+        </p>
+        <Link
+          href="/discovery"
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-plum text-ivory text-xs font-bold"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Discovery</span>
+        </Link>
+      </div>
+    );
+  }
+
+  const exchangeState = profile.relationshipState?.contactExchange;
+  const isBothApproved = exchangeState?.status === "BOTH_APPROVED";
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
+      {/* Back button */}
+      <Link
+        href="/discovery"
+        className="inline-flex items-center space-x-2 text-xs font-bold text-plum hover:text-plum-900 transition"
+      >
+        <ArrowLeft className="w-4 h-4 text-gold-600" />
+        <span>Back to Matches</span>
+      </Link>
+
+      {/* Hero Profile Card */}
+      <div className="bg-white rounded-3xl border border-warmgrey p-6 sm:p-10 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-warmgrey pb-6">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-3">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-plum">
+                {profile.firstName}
+              </h1>
+              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-plum-50 text-plum border border-plum-100">
+                {profile.publicId}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-charcoal-light">
+              {profile.age} years • {profile.gender === "FEMALE" ? "Bride" : "Groom"} • {profile.city}, {profile.state}
+            </p>
+            {profile.subCommunity && (
+              <p className="text-xs text-gold-700 font-semibold">
+                Sub-community: {profile.subCommunity}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col items-end space-y-2">
+            <VerificationBadges badges={profile.badges || []} size="md" />
+          </div>
+        </div>
+
+        {/* Notification Banner */}
+        {msg && (
+          <div
+            className={`p-4 rounded-2xl border text-xs flex items-center space-x-2.5 font-medium ${
+              msg.type === "success"
+                ? "bg-forest-50 border-forest-200 text-forest"
+                : "bg-rose-50 border-rose-200 text-plum"
+            }`}
+          >
+            {msg.type === "success" ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+            <span>{msg.text}</span>
+          </div>
+        )}
+
+        {/* Candidate Bio */}
+        {profile.aboutMe && (
+          <div className="p-5 rounded-2xl bg-ivory border border-warmgrey space-y-2">
+            <span className="text-xs font-bold text-plum uppercase tracking-wider block">
+              {t("discovery.aboutCandidate")}
+            </span>
+            <p className="text-xs sm:text-sm text-charcoal leading-relaxed italic">
+              &quot;{profile.aboutMe}&quot;
+            </p>
+          </div>
+        )}
+
+        {/* Education & Career */}
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2 text-xs font-bold text-plum uppercase tracking-wider">
+            <GraduationCap className="w-4 h-4" />
+            <span>Education & Career</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Highest Qualification</span>
+              <span className="font-bold text-charcoal">{profile.highestEducation || "Graduate"}</span>
+            </div>
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Occupation / Profession</span>
+              <span className="font-bold text-charcoal">{profile.occupation || "Working Professional"}</span>
+            </div>
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Sector</span>
+              <span className="font-bold text-charcoal">{profile.employedIn || "Private"}</span>
+            </div>
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Annual Income Range</span>
+              <span className="font-bold text-charcoal">{profile.annualIncomeRange || "Disclosed on Mutual Interest"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Family Background */}
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2 text-xs font-bold text-plum uppercase tracking-wider">
+            <Users className="w-4 h-4" />
+            <span>{t("discovery.familyBackground")}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Father&apos;s Occupation</span>
+              <span className="font-bold text-charcoal">{profile.fatherOccupation || "Not specified"}</span>
+            </div>
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Mother&apos;s Occupation</span>
+              <span className="font-bold text-charcoal">{profile.motherOccupation || "Homemaker"}</span>
+            </div>
+            <div className="p-3.5 rounded-xl border border-warmgrey bg-white">
+              <span className="text-charcoal-light block text-[11px]">Family Type & Values</span>
+              <span className="font-bold text-charcoal">{profile.familyType || "Nuclear"} ({profile.familyValues || "Moderate"})</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dual-Approval Bilateral Contact Exchange Box */}
+        <div className="p-6 rounded-2xl bg-plum-50 border border-plum-200 space-y-4">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-plum text-ivory flex items-center justify-center">
+              <Shield className="w-4 h-4 text-gold-300" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-plum">
+                Bilateral Dual-Approval Contact Exchange
+              </h3>
+              <p className="text-xs text-charcoal-light">
+                {t("discovery.dualApprovalNotice")}
+              </p>
+            </div>
+          </div>
+
+          {isBothApproved ? (
+            <div className="p-4 rounded-xl bg-forest-50 border border-forest-200 text-forest text-xs space-y-2">
+              <div className="flex items-center space-x-2 font-bold">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Dual Mutual Consent Verified!</span>
+              </div>
+              <p className="text-charcoal leading-relaxed">
+                Both candidates have approved sharing contact information. You can view the disclosed phone number in your Connections tab.
+              </p>
+              <Link
+                href="/connections"
+                className="inline-block py-2 px-4 rounded-xl bg-forest text-ivory font-bold text-xs"
+              >
+                Go to Connections & Contact Info
+              </Link>
+            </div>
+          ) : contactRequested ? (
+            <div className="p-4 rounded-xl bg-ivory border border-warmgrey text-xs flex items-center space-x-2 text-charcoal">
+              <Clock className="w-4 h-4 text-gold-600 flex-shrink-0" />
+              <span>
+                Contact exchange requested. Awaiting mutual approval from {profile.firstName}.
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={handleRequestContact}
+              disabled={requestLoading}
+              className="w-full sm:w-auto py-3 px-6 rounded-xl bg-plum hover:bg-plum-900 text-ivory font-bold text-xs shadow-md transition flex items-center justify-center space-x-2"
+            >
+              <Phone className="w-3.5 h-3.5 text-gold-300" />
+              <span>{requestLoading ? "Initiating..." : t("discovery.requestContact")}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

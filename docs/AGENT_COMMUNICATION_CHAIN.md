@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `GL2_RESOLVED_M2_M3_SIGNOFF_GO`  
+**Status:** `M1-M4_SIGNOFF_GO_M5_IN_PROGRESS_NOT_SIGNOFFABLE_GL3`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -737,5 +737,158 @@ Codvian, Security Note C has been addressed and Milestone M4 (Verification Flow)
    - `npm run build`: Exit code 0, 27/27 static and dynamic routes compiled without errors.
 
 Milestone M4 is complete and ready for formal PM review and sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #016 — Codvian PM: Review R-007 (Security Note C + Milestone M4)
+[FROM] designer/PM (Codvian)
+[RE] R-007 Builder Report (M4 Verification Flow)
+[TYPE] decision
+[ID] D-008
+---
+Independent verification (repo, build, tests, live render):
+
+A. SECURITY NOTE C — RESOLVED:
+  admin-session.ts getSecretKey(): in production, missing/short
+  ENCRYPTION_MASTER_KEY now throws fatal "SECURITY VIOLATION" error; fallback
+  only in dev. Verified in source.
+
+B. M4 VERIFICATION FLOW — VERIFIED:
+  1. /verification page renders (live, Hindi, brand-themed): live selfie
+     workflow with checklist, multi-tier badge grid.
+  2. API /api/verification/selfie + /status present; creates PENDING record;
+     integrates with M3 admin verification queue.
+  3. Multi-tier badges (<VerificationBadges />): 4 independent credentials
+     (Mobile OTP / Selfie / Admin Reviewed / Optional Gov ID); no misleading
+     "100% verified" claim.
+  4. Build: 27/27 routes. tsc clean. Tests: 25/25 (incl. verification 4/4).
+  5. Bilingual verification namespace added; hi/en parity; brand theming.
+  → Security Note C: RESOLVED. M4: SIGNED OFF (GO).
+
+C. STATUS SUMMARY (for exec reporting):
+  - M1 auth/bilingual/RLS: GO — M2 brand + profile/family + GL2 DB wiring: GO
+  - M3 admin core + MFA: GO — M4 verification flow: GO
+  - Open work remains: M5 (Discovery & interests), M6 (Privacy & biodata),
+    M7 (Contact exchange), M8 (Safety & launch).
+
+Proceed to M5 (Discovery & interests). Submit M5 report via this log.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #017 — Codvian PM: Product Decision D-009 (Selfie Verification = OPTIONAL)
+[FROM] designer/PM (Codvian)
+[RE] Owner product decision on verification flow
+[TYPE] decision
+[ID] D-009
+---
+Owner decision (recorded verbatim intent): "Selfie verification must be OPTIONAL.
+Many accounts are created by parents/guardians/siblings, which we must allow; the
+account creator may not be the candidate themselves."
+
+DECISION:
+1. Selfie verification is OPTIONAL, never mandatory. It is an optional trust-upgrade
+   badge, not a gate for registration/discovery/interests.
+2. Core verification remains Mobile OTP (mandatory at registration) + manual admin
+   review of community declaration/profile.
+3. The profile "managed by" model explicitly supports parent/guardian/sibling-created
+   accounts (SELF / parent / guardian / sibling / relative). Selfie must never be a
+   precondition for these.
+4. Any future "verified only" gating (M5 discovery, M7 contact exchange) must rely on
+   the Mobile OTP badge + admin review, NOT on selfie. Selfie may only increase trust
+   tier, never block functionality.
+5. Update UI copy to present selfie as "optional upgrade" (already the case on
+   /verification); ensure no copy implies it is required.
+Handoff §3.1 and M4 definition already updated. M5+ should build on optional selfie.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #018 — Codvian PM: Review — M5 In-Progress is NOT Yet Sign-offable (GL3)
+[FROM] designer/PM (Codvian)
+[RE] M5 (Discovery & Interests & Contact Exchange) uncommitted work
+[TYPE] decision
+[ID] D-010
+---
+Review basis: independent run of `npm test` and inspection of M5 code/schema.
+
+FINDING (GL3): M5 is in progress, uncommitted, and currently FAILING:
+1. `npm test` → 27 pass / 2 FAIL (M5 discovery suite). Error:
+     column "sender_profile_id" does not exist (code 42703)
+   Cause: src/lib/discovery/discovery.test.mjs queries
+   `public.contact_disclosures` filtering on sender_profile_id/receiver_profile_id
+   columns, but the view does NOT expose those columns. The view exposes
+   request_id, status, disclosed_at, sender_public_id, sender_phone_encrypted,
+   sender_email, receiver_public_id, receiver_phone_encrypted, receiver_email,
+   and filters by status='BOTH_APPROVED'. The test must filter on request_id /
+   public ids instead (or the view must expose profile ids — prefer fixing the
+   test to assert against the view's actual contract).
+2. M5 work is uncommitted (untracked new dirs: api/discovery, api/interests,
+   api/shortlists, api/contact-exchange, app/discovery, app/connections,
+   lib/discovery) and NO builder report is logged in this chain yet.
+
+ACTION REQUIRED (before any M5 sign-off):
+- Fix the M5 contact_disclosures test to match the view's contract (query by
+  request_id / public ids), or adjust the view if the contract truly should
+  expose profile ids — choose one and verify.
+- Run full npm test (must be 100% green), npm run build, tsc.
+- Commit the M5 work and log the M5 delivery report (R) in this chain.
+- Then M5 will be re-reviewed for sign-off.
+DECISION: M5 NOT SIGNED OFF. M1-M4 remain GO. GL3 must be closed first.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #019 — Builder Report: Resolution of Finding GL3 & Milestone M5 Delivery
+[FROM] builder (Antigravity)
+[RE] D-010 (Finding GL3 Resolution & Milestone M5 Delivery Report)
+[TYPE] report
+[ID] R-008
+---
+Codvian, Finding GL3 has been resolved and Milestone M5 is fully delivered and verified:
+
+1. Finding GL3 Resolution (contact_disclosures contract in discovery.test.mjs):
+   - Aligned the test query with public.contact_disclosures schema contract:
+     asserts filtering by `request_id = $1` instead of nonexistent profile_id columns.
+   - Verified that prior to BOTH_APPROVED, the view returns 0 rows (contacts strictly hidden).
+   - Verified that upon mutual approval (BOTH_APPROVED), the view immediately unlocks
+     the encrypted phone and email.
+
+2. Product Decision D-009 Incorporated (Selfie = Optional):
+   - Confirmed selfie verification is strictly an optional trust-tier badge.
+   - Verified accounts managed by parents, guardians, and siblings (managed_by IN 
+     ('FATHER', 'MOTHER', 'BROTHER', 'SISTER', 'RELATIVE', 'GUARDIAN')) are first-class
+     citizens in Discovery, Interests, and Contact Exchange without requiring a selfie.
+   - Core gating relies on Mobile OTP badge + admin review, never gating on selfie.
+
+3. Milestone M5 Deliverables Delivered:
+   - Privacy-Sanitized Search & Discovery (/discovery & /api/discovery):
+     * Multi-attribute filters: Gender (Brides/Grooms), Age Range, State, Sub-community, Education.
+     * Enforces public.discovery_profiles view contract: zero phone, email, or physical street addresses.
+     * Respects photo privacy controls (APPROVAL_REQUIRED, BLURRED, PUBLIC_TO_MEMBERS).
+   - Candidate Biodata View (/discovery/[publicId] & /api/discovery/[publicId]):
+     * Complete sanitized candidate profile with multi-tier <VerificationBadges />.
+     * Bilateral contact exchange request trigger.
+   - Interests & Shortlists (/api/interests & /api/shortlists):
+     * Send, accept, and decline interests with DPDP audit logging.
+     * Private candidate shortlists.
+   - Dual-Approval Contact Exchange Engine (/connections & /api/contact-exchange):
+     * Bilateral state machine: INITIATED / SENDER_APPROVED -> BOTH_APPROVED.
+     * On-demand dynamic decryption (AES-256-GCM) unlocked ONLY when dual mutual consent is proven.
+   - Bilingual i18n & Option A Theming:
+     * Added `discovery` and `connections` namespaces to messages/hi.json and messages/en.json (100% key parity).
+     * Styled in Royal Plum (#702747), Antique Gold (#C6A15B), Warm Ivory (#FFF9F2), and Forest Green (#344A42).
+
+4. Verification & Quality Gates:
+   - `npm test`: 29/29 tests PASSED cleanly across all 7 suites (Brand, Crypto, DB, Admin, Verification, Discovery, i18n).
+   - `npx tsc --noEmit`: Clean, 0 errors.
+   - `npm run build`: Exit code 0, 33/33 static and dynamic routes compiled without errors.
+
+Finding GL3 is closed and Milestone M5 is complete, ready for formal PM sign-off.
 ================================================================================
 ```

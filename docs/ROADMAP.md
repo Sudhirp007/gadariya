@@ -60,9 +60,9 @@ Seven sprints, each with a definition-of-done (DoD). Parallel frontend/backend a
 
 ### Sprint 4 — Weeks 8–9: Verification & Privacy
 - **Epic 7 (Privacy):** profile visibility, photo visibility, biodata request/approve/revoke, watermarked biodata, consent records.
-- **Epic 4 (Verification):** mobile badge, selfie submission, admin selfie review, identity-check request (optional), badge display, revoke on expiry.
+- **Epic 4 (Verification):** mobile badge, selfie submission (**OPTIONAL** — accounts are created by parents/guardians/siblings so selfie is an optional trust upgrade, never a gate), admin selfie review, identity-check request (optional), badge display, revoke on expiry.
 - Admin: verification queue.
-- DoD: selfie workflow completes end-to-end; admin approves/rejects; badges accurate; biodata approval flow works; revoke works; phone number never returned by discovery APIs.
+- DoD: selfie workflow works end-to-end but is optional; admin approves/rejects; badges accurate; biodata approval flow works; revoke works; phone number never returned by discovery APIs.
 
 ### Sprint 5 — Week 10: Biodata & Contact Exchange
 - **Epic 8 (Contact exchange):** initiate request, bilateral approval, disclosure only after both approvals, audit record.

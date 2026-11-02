@@ -73,7 +73,7 @@ We cut the ₹3L PRD down to the **smallest trust-first product** that proves th
 | ---- | ------------- |
 | Registration | Mobile OTP via free email/OTP provider; profile type (self/son/daughter/relative); basic biodata; Pal community declaration; consent capture |
 | Profile | Unique public ID, photo upload (private), education/profession, family details, partner preferences, completion % |
-| Verification | Mobile badge + **manual admin selfie verification** (moderator reviews; no paid provider) |
+| Verification | Mobile OTP badge (core) + **OPTIONAL selfie verification** (moderator reviews; no paid provider). Selfie is NOT required — many profiles are created by parents/guardians/siblings on behalf of the candidate, so selfie must stay optional. Account creator may differ from the profile person. |
 | Discovery | Search/filter by age, city, education, profession, verified-only; pagination; match cards; shortlist |
 | Interests | Send / accept / decline / withdraw; no duplicates; verify-before-send |
 | Privacy | Photo & biodata approval-controlled; phone hidden; request+approve biodata; revoke; watermarked PDF (simple) |
@@ -143,7 +143,7 @@ Build in this order; each milestone is independently runnable and demoable.
 | M1 | Auth & registration | Email OTP send/verify; account type; basic biodata save; underage + duplicate handling; consent recorded |
 | M2 | Profile & family | Edit biodata; photo upload (private); family manager invite/permissions; completion %; submit for review |
 | M3 | Admin core | Admin login + MFA; approval queue; approve/reject; suspend/block; audit log |
-| M4 | Verification | Mobile badge; selfie upload; admin selfie review; badges display; revoke |
+| M4 | Verification | Mobile badge; **optional** selfie upload; admin selfie review; badges display; revoke |
 | M5 | Discovery & interests | Search/filter; pagination; match cards; shortlist; send/accept/decline/withdraw; verify-before-send; duplicates blocked |
 | M6 | Privacy & biodata | Photo/biodata approval; request/approve/revoke biodata; watermarked PDF; consent records |
 | M7 | Contact exchange | Dual approval state machine; reveal only after both; audit; in-app messages after mutual interest |

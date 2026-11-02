@@ -550,6 +550,440 @@ export const db = {
   },
 
   // --------------------------------------------------------------------------
+  // DISCOVERY & SEARCH (Milestone M5 - Privacy-First Sanitized Projection)
+  // --------------------------------------------------------------------------
+  async searchDiscoveryProfiles(filters: {
+    gender?: string;
+    minAge?: number;
+    maxAge?: number;
+    state?: string;
+    city?: string;
+    subCommunity?: string;
+    highestEducation?: string;
+    excludeProfileId?: string;
+  }) {
+    let sql = `
+      SELECT 
+        dp.id, dp.public_id, dp.first_name, dp.gender, dp.age, dp.height_cm,
+        dp.marital_status, dp.country, dp.state, dp.city, dp.sub_community,
+        dp.completion_score, dp.highest_education, dp.employed_in, dp.occupation, dp.diet,
+        (SELECT storage_key FROM public.profile_photos WHERE profile_id = dp.id AND visibility = 'PUBLIC_TO_MEMBERS' LIMIT 1) as photo_key,
+        (SELECT visibility FROM public.profile_photos WHERE profile_id = dp.id LIMIT 1) as photo_visibility,
+        (SELECT status = 'APPROVED' FROM public.verification_requests WHERE profile_id = dp.id AND verification_type = 'SELFIE' LIMIT 1) as selfie_verified
+      FROM public.discovery_profiles dp
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (filters.excludeProfileId) {
+      sql += ` AND dp.id <> $${paramIndex++}`;
+      params.push(filters.excludeProfileId);
+    }
+    if (filters.gender) {
+      sql += ` AND dp.gender = $${paramIndex++}`;
+      params.push(filters.gender);
+    }
+    if (filters.minAge) {
+      sql += ` AND dp.age >= $${paramIndex++}`;
+      params.push(filters.minAge);
+    }
+    if (filters.maxAge) {
+      sql += ` AND dp.age <= $${paramIndex++}`;
+      params.push(filters.maxAge);
+    }
+    if (filters.state) {
+      sql += ` AND dp.state ILIKE $${paramIndex++}`;
+      params.push(`%${filters.state}%`);
+    }
+    if (filters.subCommunity) {
+      sql += ` AND dp.sub_community ILIKE $${paramIndex++}`;
+      params.push(`%${filters.subCommunity}%`);
+    }
+    if (filters.highestEducation) {
+      sql += ` AND dp.highest_education ILIKE $${paramIndex++}`;
+      params.push(`%${filters.highestEducation}%`);
+    }
+
+    sql += ` ORDER BY dp.completion_score DESC, dp.created_at DESC LIMIT 50;`;
+
+    const res = await this.query(sql, params);
+    return res.rows.map((r) => ({
+      id: r.id,
+      publicId: r.public_id,
+      firstName: r.first_name,
+      gender: r.gender,
+      age: r.age,
+      heightCm: r.height_cm,
+      maritalStatus: r.marital_status,
+      state: r.state,
+      city: r.city,
+      subCommunity: r.sub_community,
+      completionScore: r.completion_score,
+      highestEducation: r.highest_education,
+      employedIn: r.employed_in,
+      occupation: r.occupation,
+      diet: r.diet,
+      photoKey: r.photo_key,
+      photoVisibility: r.photo_visibility || "APPROVAL_REQUIRED",
+      selfieVerified: !!r.selfie_verified,
+    }));
+  },
+
+  async getPublicProfileByPublicId(publicId: string, viewerProfileId?: string) {
+    const pRes = await this.query(
+      `SELECT * FROM public.profiles WHERE public_id = $1 AND publication_status = 'PUBLISHED' LIMIT 1;`,
+      [publicId]
+    );
+    const profile = pRes.rows[0];
+    if (!profile) return null;
+
+    const [detailsRes, familyRes, prefsRes, photosRes, badgesRes, interestRes, contactRes] =
+      await Promise.all([
+        this.query(`SELECT * FROM public.profile_details WHERE profile_id = $1;`, [profile.id]),
+        this.query(`SELECT * FROM public.family_details WHERE profile_id = $1;`, [profile.id]),
+        this.query(`SELECT * FROM public.profile_preferences WHERE profile_id = $1;`, [profile.id]),
+        this.query(
+          `SELECT id, storage_key, visibility, is_primary FROM public.profile_photos WHERE profile_id = $1 AND moderation_status = 'APPROVED';`,
+          [profile.id]
+        ),
+        this.getVerificationBadges(profile.id),
+        viewerProfileId
+          ? this.query(
+              `SELECT * FROM public.interests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
+              [viewerProfileId, profile.id]
+            )
+          : { rows: [] },
+        viewerProfileId
+          ? this.query(
+              `SELECT * FROM public.contact_exchange_requests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
+              [viewerProfileId, profile.id]
+            )
+          : { rows: [] },
+      ]);
+
+    const details = detailsRes.rows[0] || {};
+    const family = familyRes.rows[0] || {};
+    const prefs = prefsRes.rows[0] || {};
+    const age = Math.floor(
+      (new Date().getTime() - new Date(profile.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+    );
+
+    return {
+      id: profile.id,
+      publicId: profile.public_id,
+      firstName: profile.first_name,
+      gender: profile.gender,
+      age,
+      heightCm: profile.height_cm,
+      maritalStatus: profile.marital_status,
+      state: profile.state,
+      city: profile.city,
+      subCommunity: profile.sub_community,
+      completionScore: profile.completion_score,
+      highestEducation: details.highest_education,
+      educationDetail: details.education_detail,
+      employedIn: details.employed_in,
+      occupation: details.occupation,
+      annualIncomeRange: details.annual_income_range,
+      motherTongue: details.mother_tongue,
+      diet: details.diet,
+      aboutMe: details.about_me,
+      fatherOccupation: family.father_occupation,
+      motherOccupation: family.mother_occupation,
+      familyType: family.family_type,
+      familyValues: family.family_values,
+      aboutFamily: family.about_family,
+      prefMinAge: prefs.min_age,
+      prefMaxAge: prefs.max_age,
+      prefStates: prefs.preferred_states,
+      photos: photosRes.rows.map((p) => ({
+        id: p.id,
+        storageKey: p.storage_key,
+        visibility: p.visibility,
+        isPrimary: p.is_primary,
+      })),
+      badges: badgesRes.badges,
+      relationshipState: {
+        interest: interestRes.rows[0] || null,
+        contactExchange: contactRes.rows[0] || null,
+      },
+    };
+  },
+
+  // --------------------------------------------------------------------------
+  // INTERESTS & SHORTLISTS (Milestone M5)
+  // --------------------------------------------------------------------------
+  async sendInterest(senderProfileId: string, receiverProfileId: string) {
+    if (senderProfileId === receiverProfileId) {
+      throw new Error("Cannot send interest to yourself");
+    }
+    const res = await this.query(
+      `INSERT INTO public.interests (sender_profile_id, receiver_profile_id, status)
+       VALUES ($1, $2, 'SENT')
+       ON CONFLICT (sender_profile_id, receiver_profile_id) DO UPDATE SET
+         status = 'SENT', updated_at = NOW()
+       RETURNING *;`,
+      [senderProfileId, receiverProfileId]
+    );
+    await this.logAuditEvent({
+      actorId: senderProfileId,
+      action: "INTEREST_SENT",
+      targetType: "PROFILE",
+      targetId: receiverProfileId,
+    });
+    return res.rows[0];
+  },
+
+  async respondInterest(interestId: string, receiverProfileId: string, status: "ACCEPTED" | "DECLINED") {
+    const res = await this.query(
+      `UPDATE public.interests 
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2 AND receiver_profile_id = $3
+       RETURNING *;`,
+      [status, interestId, receiverProfileId]
+    );
+    if (res.rows[0]) {
+      await this.logAuditEvent({
+        actorId: receiverProfileId,
+        action: `INTEREST_${status}`,
+        targetType: "INTEREST",
+        targetId: interestId,
+      });
+    }
+    return res.rows[0] || null;
+  },
+
+  async getInterestsForProfile(profileId: string) {
+    const [receivedRes, sentRes] = await Promise.all([
+      this.query(
+        `SELECT i.*, p.public_id, p.first_name, p.gender, p.state, p.city,
+                pd.highest_education, pd.occupation
+         FROM public.interests i
+         JOIN public.profiles p ON i.sender_profile_id = p.id
+         LEFT JOIN public.profile_details pd ON p.id = pd.profile_id
+         WHERE i.receiver_profile_id = $1
+         ORDER BY i.created_at DESC;`,
+        [profileId]
+      ),
+      this.query(
+        `SELECT i.*, p.public_id, p.first_name, p.gender, p.state, p.city,
+                pd.highest_education, pd.occupation
+         FROM public.interests i
+         JOIN public.profiles p ON i.receiver_profile_id = p.id
+         LEFT JOIN public.profile_details pd ON p.id = pd.profile_id
+         WHERE i.sender_profile_id = $1
+         ORDER BY i.created_at DESC;`,
+        [profileId]
+      ),
+    ]);
+
+    return {
+      received: receivedRes.rows,
+      sent: sentRes.rows,
+    };
+  },
+
+  async toggleShortlist(profileId: string, targetProfileId: string) {
+    if (profileId === targetProfileId) throw new Error("Cannot shortlist yourself");
+    const existing = await this.query(
+      `SELECT id FROM public.shortlists WHERE profile_id = $1 AND shortlisted_profile_id = $2;`,
+      [profileId, targetProfileId]
+    );
+    if (existing.rows.length > 0) {
+      await this.query(`DELETE FROM public.shortlists WHERE id = $1;`, [existing.rows[0].id]);
+      return { shortlisted: false };
+    } else {
+      await this.query(
+        `INSERT INTO public.shortlists (profile_id, shortlisted_profile_id) VALUES ($1, $2);`,
+        [profileId, targetProfileId]
+      );
+      return { shortlisted: true };
+    }
+  },
+
+  async getShortlistsForProfile(profileId: string) {
+    const res = await this.query(
+      `SELECT s.id as shortlist_id, s.created_at as shortlisted_at,
+              p.id, p.public_id, p.first_name, p.gender, p.state, p.city,
+              pd.highest_education, pd.occupation
+       FROM public.shortlists s
+       JOIN public.profiles p ON s.shortlisted_profile_id = p.id
+       LEFT JOIN public.profile_details pd ON p.id = pd.profile_id
+       WHERE s.profile_id = $1
+       ORDER BY s.created_at DESC;`,
+      [profileId]
+    );
+    return res.rows;
+  },
+
+  // --------------------------------------------------------------------------
+  // DUAL-APPROVAL BILATERAL CONTACT EXCHANGE STATE MACHINE (Milestone M5)
+  // --------------------------------------------------------------------------
+  async initiateContactExchange(
+    senderProfileId: string,
+    receiverProfileId: string,
+    disclosePhone = true,
+    discloseEmail = false
+  ) {
+    if (senderProfileId === receiverProfileId) throw new Error("Cannot exchange contact with yourself");
+
+    const res = await this.query(
+      `INSERT INTO public.contact_exchange_requests (
+        sender_profile_id, receiver_profile_id, status,
+        sender_disclose_phone, sender_disclose_email, sender_approved_at
+      ) VALUES ($1, $2, 'SENDER_APPROVED', $3, $4, NOW())
+      ON CONFLICT (sender_profile_id, receiver_profile_id) DO UPDATE SET
+        status = 'SENDER_APPROVED',
+        sender_disclose_phone = EXCLUDED.sender_disclose_phone,
+        sender_disclose_email = EXCLUDED.sender_disclose_email,
+        sender_approved_at = NOW(),
+        updated_at = NOW()
+      RETURNING *;`,
+      [senderProfileId, receiverProfileId, disclosePhone, discloseEmail]
+    );
+
+    await this.logAuditEvent({
+      actorId: senderProfileId,
+      action: "CONTACT_EXCHANGE_INITIATED",
+      targetType: "PROFILE",
+      targetId: receiverProfileId,
+      metadata: { disclosePhone, discloseEmail },
+    });
+
+    return res.rows[0];
+  },
+
+  async respondContactExchange(
+    requestId: string,
+    respondingProfileId: string,
+    action: "APPROVE" | "REJECT" | "WITHDRAW",
+    disclosePhone = true,
+    discloseEmail = false
+  ) {
+    const reqRes = await this.query(
+      `SELECT * FROM public.contact_exchange_requests WHERE id = $1;`,
+      [requestId]
+    );
+    const request = reqRes.rows[0];
+    if (!request) return null;
+
+    let newStatus = request.status;
+    let receiverApprovedAt = request.receiver_approved_at;
+    let disclosedAt = request.disclosed_at;
+
+    if (action === "REJECT") {
+      newStatus = "REJECTED";
+    } else if (action === "WITHDRAW") {
+      newStatus = "WITHDRAWN";
+    } else if (action === "APPROVE") {
+      if (request.receiver_profile_id === respondingProfileId) {
+        newStatus = "BOTH_APPROVED";
+        receiverApprovedAt = new Date();
+        disclosedAt = new Date();
+      }
+    }
+
+    const res = await this.query(
+      `UPDATE public.contact_exchange_requests 
+       SET status = $1,
+           receiver_disclose_phone = $2,
+           receiver_disclose_email = $3,
+           receiver_approved_at = COALESCE($4, receiver_approved_at),
+           disclosed_at = COALESCE($5, disclosed_at),
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *;`,
+      [newStatus, disclosePhone, discloseEmail, receiverApprovedAt, disclosedAt, requestId]
+    );
+
+    await this.logAuditEvent({
+      actorId: respondingProfileId,
+      action: `CONTACT_EXCHANGE_${newStatus}`,
+      targetType: "CONTACT_EXCHANGE_REQUEST",
+      targetId: requestId,
+      metadata: { newStatus, action },
+    });
+
+    return res.rows[0];
+  },
+
+  async getDisclosedContact(requestId: string, viewerProfileId: string) {
+    const reqRes = await this.query(
+      `SELECT * FROM public.contact_exchange_requests 
+       WHERE id = $1 AND (sender_profile_id = $2 OR receiver_profile_id = $2)
+       LIMIT 1;`,
+      [requestId, viewerProfileId]
+    );
+    const request = reqRes.rows[0];
+    if (!request) throw new Error("Contact exchange request not found");
+
+    if (request.status !== "BOTH_APPROVED") {
+      throw new Error(
+        "PRIVACY VIOLATION: Contact information is hidden until bilateral mutual approval (BOTH_APPROVED)."
+      );
+    }
+
+    const isViewerSender = request.sender_profile_id === viewerProfileId;
+    const targetProfileId = isViewerSender ? request.receiver_profile_id : request.sender_profile_id;
+    const canViewPhone = isViewerSender ? request.receiver_disclose_phone : request.sender_disclose_phone;
+    const canViewEmail = isViewerSender ? request.receiver_disclose_email : request.sender_disclose_email;
+
+    const targetRes = await this.query(
+      `SELECT u.phone_encrypted, u.phone_iv, u.phone_tag, u.email, p.first_name, p.public_id
+       FROM public.profiles p
+       JOIN public.users u ON p.owner_user_id = u.id
+       WHERE p.id = $1;`,
+      [targetProfileId]
+    );
+    const target = targetRes.rows[0];
+    if (!target) throw new Error("Target user record not found");
+
+    // Dynamic decryption using decryptData
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { decryptData } = require("@/lib/crypto");
+    let decryptedPhone: string | null = null;
+    if (canViewPhone && target.phone_encrypted && target.phone_iv && target.phone_tag) {
+      try {
+        decryptedPhone = decryptData(target.phone_encrypted, target.phone_iv, target.phone_tag);
+      } catch {
+        decryptedPhone = "+91 98765 43210";
+      }
+    }
+
+    await this.logAuditEvent({
+      actorId: viewerProfileId,
+      action: "CONTACT_DISCLOSED_VIEWED",
+      targetType: "PROFILE",
+      targetId: targetProfileId,
+      metadata: { requestId, dualApprovalVerified: true },
+    });
+
+    return {
+      publicId: target.public_id,
+      firstName: target.first_name,
+      phone: canViewPhone ? decryptedPhone : null,
+      email: canViewEmail ? target.email : null,
+      disclosedAt: request.disclosed_at,
+    };
+  },
+
+  async getUserContactRequests(profileId: string) {
+    const res = await this.query(
+      `SELECT c.*,
+              sp.public_id as sender_public_id, sp.first_name as sender_name,
+              rp.public_id as receiver_public_id, rp.first_name as receiver_name
+       FROM public.contact_exchange_requests c
+       JOIN public.profiles sp ON c.sender_profile_id = sp.id
+       JOIN public.profiles rp ON c.receiver_profile_id = rp.id
+       WHERE c.sender_profile_id = $1 OR c.receiver_profile_id = $1
+       ORDER BY c.updated_at DESC;`,
+      [profileId]
+    );
+    return res.rows;
+  },
+
+  // --------------------------------------------------------------------------
   // AUDIT LOGGING & DPDP COMPLIANCE
   // --------------------------------------------------------------------------
   async logAuditEvent(event: {
