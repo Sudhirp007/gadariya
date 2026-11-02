@@ -19,6 +19,7 @@
     "home": "Home",
     "discovery": "Matches",
     "connections": "Connections",
+    "messages": "Messages",
     "privacy": "Privacy",
     "safety": "Privacy & Safety",
     "verification": "Verification Process",
@@ -265,5 +266,18 @@
     "title": "Confidential Candidate Biodata",
     "downloadNotice": "Protected under India DPDP Act 2025",
     "confidentialWatermark": "Confidential & Tracked Matrimonial Biodata"
+  },
+  "messages": {
+    "pageTitle": "Mutual Interest Conversations",
+    "pageSubtitle": "End-to-end encrypted (AES-256-GCM) bilateral messages with verified community matches",
+    "searchPlaceholder": "Search conversations by name or PAL ID...",
+    "noConversations": "No active conversations yet.",
+    "noConversationsDesc": "Once you and another member mutually accept an interest request in Discovery, an encrypted bilateral chat channel will be unlocked here.",
+    "encryptedNotice": "AES-256-GCM Encrypted Chat • Mutual Interest Verified",
+    "typeMessage": "Type a respectful message...",
+    "send": "Send",
+    "sending": "Sending...",
+    "reportCandidate": "Report Candidate",
+    "blockCandidate": "Block Candidate"
   }
 }

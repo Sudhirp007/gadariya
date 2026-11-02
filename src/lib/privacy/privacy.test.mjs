@@ -6,6 +6,18 @@ import { generateBiodataPdf } from "../biodata/pdf-generator.ts";
 import { db } from "../db/index.ts";
 
 test("Milestone M6: Privacy, Watermarked Biodata & DPDP Act 2025 Suite", async (t) => {
+  // Cleanup + pool close run after ALL subtests, even if one fails.
+  // Deletes all users seeded by this suite (M6-03 and M6-04 use @pal.in
+  // emails); profiles/interests/shares cascade via ON DELETE CASCADE.
+  await t.after(async () => {
+    try {
+      await db.query(`DELETE FROM public.users WHERE email LIKE '%@pal.in';`);
+    } catch {
+      // best-effort cleanup; never mask a real subtest failure
+    }
+    await db.endPool();
+  });
+
   await t.test("M6-01: Watermarked Biodata PDF Generator produces valid binary with tracking metadata", async () => {
     const candidateData = {
       publicId: "PAL900001",
@@ -165,7 +177,5 @@ test("Milestone M6: Privacy, Watermarked Biodata & DPDP Act 2025 Suite", async (
     const profileCheck = await db.query(`SELECT publication_status, is_discoverable FROM public.profiles WHERE id = $1;`, [profId]);
     assert.strictEqual(profileCheck.rows[0].publication_status, "SUSPENDED");
     assert.strictEqual(profileCheck.rows[0].is_discoverable, false);
-
-    await db.endPool();
   });
 });

@@ -14,23 +14,22 @@ export function AppHeader() {
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         <BrandLogo isLight={true} />
 
-        <nav className="flex items-center space-x-3 sm:space-x-5">
+        <nav className="flex items-center space-x-3 sm:space-x-4">
           <Link
-            href="/#safety"
-            className="hidden md:inline-block text-rose-100 hover:text-white text-sm font-medium transition"
+            href="/discovery"
+            className="text-rose-100 hover:text-white text-xs sm:text-sm font-semibold transition"
           >
-            {t("nav.safety")}
+            {t("nav.discovery")}
           </Link>
           <Link
-            href="/#how-it-works"
-            className="hidden md:inline-block text-rose-100 hover:text-white text-sm font-medium transition"
+            href="/messages"
+            className="text-rose-100 hover:text-white text-xs sm:text-sm font-semibold transition"
           >
-            {t("nav.howItWorks")}
+            {t("nav.messages")}
           </Link>
-
           <Link
             href="/profile"
-            className="hidden sm:inline-block text-rose-100 hover:text-white text-sm font-medium transition"
+            className="hidden sm:inline-block text-rose-100 hover:text-white text-xs sm:text-sm font-semibold transition"
           >
             {t("nav.profile")}
           </Link>

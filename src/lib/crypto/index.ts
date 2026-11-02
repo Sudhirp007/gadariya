@@ -1,4 +1,26 @@
 import crypto from "crypto";
+import fs from "fs";
+
+function loadEnvKeys() {
+  if (!process.env.ENCRYPTION_MASTER_KEY || !process.env.PHONE_PEPPER_KEY) {
+    try {
+      if (fs.existsSync(".env.local")) {
+        const lines = fs.readFileSync(".env.local", "utf-8").split("\n");
+        for (const line of lines) {
+          if (line.startsWith("ENCRYPTION_MASTER_KEY=")) {
+            process.env.ENCRYPTION_MASTER_KEY = line.slice("ENCRYPTION_MASTER_KEY=".length).trim();
+          }
+          if (line.startsWith("PHONE_PEPPER_KEY=")) {
+            process.env.PHONE_PEPPER_KEY = line.slice("PHONE_PEPPER_KEY=".length).trim();
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+loadEnvKeys();
 
 /**
  * Pal Matrimony Cryptographic & Privacy Utilities
@@ -84,16 +106,39 @@ export function encryptData(plaintext: string): EncryptedPayload {
 
 /**
  * Decrypts AES-256-GCM encrypted payload, verifying authentication tag.
+ * Supports both { ciphertext, iv, tag } object or (ciphertext, iv, tag) arguments.
  */
-export function decryptData(payload: EncryptedPayload): string {
+export function decryptData(
+  payloadOrCiphertext: EncryptedPayload | string,
+  ivArg?: string,
+  tagArg?: string
+): string {
   const masterKey = getMasterKey();
-  const iv = Buffer.from(payload.iv, "base64");
-  const tag = Buffer.from(payload.tag, "base64");
+  let ciphertext: string;
+  let ivStr: string;
+  let tagStr: string;
+
+  if (typeof payloadOrCiphertext === "object" && payloadOrCiphertext !== null) {
+    ciphertext = payloadOrCiphertext.ciphertext;
+    ivStr = payloadOrCiphertext.iv;
+    tagStr = payloadOrCiphertext.tag;
+  } else {
+    ciphertext = payloadOrCiphertext;
+    ivStr = ivArg || "";
+    tagStr = tagArg || "";
+  }
+
+  // Handle both base64 and hex encodings
+  const ivEncoding: BufferEncoding = ivStr.length === 24 && !ivStr.includes("=") ? "hex" : "base64";
+  const tagEncoding: BufferEncoding = tagStr.length === 32 && !tagStr.includes("=") ? "hex" : "base64";
+
+  const iv = Buffer.from(ivStr, ivEncoding);
+  const tag = Buffer.from(tagStr, tagEncoding);
 
   const decipher = crypto.createDecipheriv("aes-256-gcm", masterKey, iv);
   decipher.setAuthTag(tag);
 
-  let plaintext = decipher.update(payload.ciphertext, "base64", "utf8");
+  let plaintext = decipher.update(ciphertext, "base64", "utf8");
   plaintext += decipher.final("utf8");
   return plaintext;
 }

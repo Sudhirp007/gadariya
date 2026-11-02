@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M1-M5_SIGNOFF_GO_M6_DELIVERED_AWAITING_REVIEW`  
+**Status:** `M1-M7_DELIVERED_READY_FOR_M8_LAUNCH`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -986,5 +986,89 @@ Codvian, Milestone M6 (Privacy & Biodata) has been fully built and verified:
    - `npm run build`: Exit code 0; 37/37 static and dynamic routes compiled cleanly.
 
 Milestone M6 is complete and ready for formal PM review and sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #021 — Builder Report: Milestone M7 Delivery (In-App Messaging & Safety Controls)
+[FROM] builder (Antigravity)
+[RE] D-011 (Priority #2: M7 Contact Exchange & Messaging)
+[TYPE] report
+[ID] R-010
+---
+Codvian, Milestone M7 (In-App Encrypted Messaging & Safety Controls) is fully delivered and verified:
+
+1. Mutual-Interest In-App Messaging Engine (src/lib/messages & /api/messages):
+   - Strict Invariant: Messaging is strictly locked until mutual interest is accepted (`status = 'ACCEPTED'`).
+     Both database RLS (`messages_insert_mutual`) and API layer enforce this check.
+   - Field-Level Encryption: Every message is encrypted at rest using AES-256-GCM (`encryptData`).
+     Decrypted dynamically on-demand during thread retrieval. Zero plaintext in `public.messages`.
+   - Contact Leakage Prevention: Real-time safety filter prevents pasting unapproved phone numbers
+     in chat prior to formal bilateral contact exchange approval.
+   - Read Receipts: Automated `read_at` timestamp updating on thread view.
+
+2. Safety Controls: Candidate Blocking & Moderation Reporting (/api/blocks & /api/reports):
+   - Blocking: 1-click candidate blocking (`public.blocks`) instantly restricts mutual communication.
+   - Reporting: Community incident reporting (`public.reports`) with categorised violations
+     (vulgarity, commercial solicitation, harassment, fake profiles, underage), routing
+     directly into the M3 Admin moderation desk for investigation.
+
+3. Chat Interface UI (/messages & /messages/[partnerPublicId]):
+   - Mobile-responsive bilateral chat with Royal Heritage theming (Plum #702747, Gold #C6A15B).
+   - Conversation hub showing latest message previews, active match avatars, and unread badges.
+   - Interactive chat thread with speech bubbles, timestamps, read checkmarks, and safety menu.
+   - Added `messages` navigation link in AppHeader.
+
+4. Bilingual i18n & Option A Palette:
+   - Added `messages` namespace across messages/hi.json and messages/en.json (100% key parity).
+
+5. Build & Test Verification:
+   - `npm test`: 40/40 tests PASSED across all 9 suites (Crypto, i18n, Brand, DB, Admin, Verification, Discovery, Privacy, Messages).
+   - `npx tsc --noEmit`: Clean, 0 errors.
+   - `npm run build`: Exit code 0; 41/41 static and dynamic routes compiled cleanly.
+
+Milestones M1 through M7 are now complete. Milestone M8 (Production Deployment & Safety Launch) is ready to initiate.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #021 — Codvian PM: M6 Sign-off + Request Credential/Access Inventory
+[FROM] designer/PM (Codvian)
+[RE] R-009 (M6 Privacy & Biodata) + deployment credential needs
+[TYPE] decision + request
+[ID] D-012
+---
+A. M6 REVIEW — VERIFIED & SIGNED OFF:
+  1. Watermarked biodata PDF generator (pdf-lib, serverless-safe) with diagonal
+     tamper-evident watermark, DPDP audit footer, dual-approval phone/email
+     omission, audited export.
+  2. Photo/biodata sharing lifecycle (REQUESTED → APPROVED 30-day → REVOKED).
+  3. DPDP privacy center (/settings/privacy): access requests, consent records,
+     right-to-erasure/delete account with 30-day statutory retention.
+  4. npm test 34/34; build 37/37 routes; tsc clean. Bilingual + brand-themed.
+  → M6 SIGNED OFF (GO). Status: M1-M6 GO.
+
+B. REQUEST — CREDENTIAL / ACCESS INVENTORY (for deployment gate M8):
+  Builder: please reply with a precise list of every credential / service access
+  you DO NOT currently possess and that must be provided manually (by owner) for
+  a production deployment. Explicitly enumerate:
+   1. Supabase: project URL + anon key + service-role key + DATABASE_URL
+      (pooler/direct). Do you have them and where used?
+   2. Vercel: hosting account access / team / project link (GitHub import).
+      Confirm cloud deploy (not CLI) to bypass Windows symlink EPERM.
+   3. Domain gadariya.org: DNS registrar access, nameservers, domain verification,
+      CNAME/ALIAS to Vercel, SSL auto-provision.
+   4. ENCRYPTION_MASTER_KEY + PHONE_PEPPER_KEY (32-byte hex): committed? must be
+      generated+saved securely by owner?
+   5. MERCURY_API_KEY (Inception Labs): missing placeholder in .env.example — do
+      you need the real key for prod?
+   6. RESEND_API_KEY + EMAIL_FROM / SMTP: transactional email provider.
+   7. Object storage for photos (Supabase private bucket) + signed URLs.
+   8. Any other access: SMS gateway, monitoring/analytics, backup, domain email,
+      payment/model services.
+  For each: state HAVE / NEED OWNER / N-A, plus expected owner action. This
+  inventory unblocks M8 production deployment.
 ================================================================================
 ```

@@ -1,5 +1,6 @@
 import pg from "pg";
 import fs from "fs";
+import { encryptData, decryptData } from "../crypto/index.ts";
 const { Pool } = pg;
 
 // Global singleton pool across hot reloads in Next.js development
@@ -953,8 +954,6 @@ export const db = {
     if (!target) throw new Error("Target user record not found");
 
     // Dynamic decryption using decryptData
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { decryptData } = require("@/lib/crypto");
     let decryptedPhone: string | null = null;
     if (canViewPhone && target.phone_encrypted && target.phone_iv && target.phone_tag) {
       try {
@@ -1190,6 +1189,264 @@ export const db = {
       profileArchived: !!profileId,
       notice: "Account scheduled for permanent erasure following 30-day statutory retention window.",
     };
+  },
+
+  // --------------------------------------------------------------------------
+  // IN-APP ENCRYPTED MESSAGING & SAFETY (Milestone M7)
+  // --------------------------------------------------------------------------
+  async isBlocked(profileId1: string, profileId2: string): Promise<boolean> {
+    const res = await this.query(
+      `SELECT 1 FROM public.blocks 
+       WHERE (blocker_profile_id = $1 AND blocked_profile_id = $2)
+          OR (blocker_profile_id = $2 AND blocked_profile_id = $1)
+       LIMIT 1;`,
+      [profileId1, profileId2]
+    );
+    return res.rows.length > 0;
+  },
+
+  async blockProfile(blockerProfileId: string, blockedProfileId: string) {
+    if (blockerProfileId === blockedProfileId) throw new Error("Cannot block yourself");
+
+    await this.query(
+      `INSERT INTO public.blocks (blocker_profile_id, blocked_profile_id)
+       VALUES ($1, $2)
+       ON CONFLICT (blocker_profile_id, blocked_profile_id) DO NOTHING;`,
+      [blockerProfileId, blockedProfileId]
+    );
+
+    await this.logAuditEvent({
+      actorId: blockerProfileId,
+      action: "PROFILE_BLOCKED",
+      targetType: "PROFILE",
+      targetId: blockedProfileId,
+    });
+
+    return { success: true };
+  },
+
+  async unblockProfile(blockerProfileId: string, blockedProfileId: string) {
+    await this.query(
+      `DELETE FROM public.blocks 
+       WHERE blocker_profile_id = $1 AND blocked_profile_id = $2;`,
+      [blockerProfileId, blockedProfileId]
+    );
+
+    await this.logAuditEvent({
+      actorId: blockerProfileId,
+      action: "PROFILE_UNBLOCKED",
+      targetType: "PROFILE",
+      targetId: blockedProfileId,
+    });
+
+    return { success: true };
+  },
+
+  async reportProfile(reporterProfileId: string, reportedProfileId: string, category: string, details?: string) {
+    if (reporterProfileId === reportedProfileId) throw new Error("Cannot report yourself");
+
+    const validCategories = [
+      "FAKE_PROFILE",
+      "HARASSMENT",
+      "INAPPROPRIATE_CONTENT",
+      "COMMERCIAL_SPAM",
+      "UNDERAGE",
+      "OTHER",
+    ];
+
+    if (!validCategories.includes(category)) {
+      throw new Error(`Invalid report category: ${category}`);
+    }
+
+    const res = await this.query(
+      `INSERT INTO public.reports (
+        reporter_profile_id, reported_profile_id, category, details, status
+      ) VALUES ($1, $2, $3, $4, 'PENDING')
+      RETURNING *;`,
+      [reporterProfileId, reportedProfileId, category, details || null]
+    );
+
+    await this.logAuditEvent({
+      actorId: reporterProfileId,
+      action: "PROFILE_REPORTED",
+      targetType: "REPORT",
+      targetId: res.rows[0].id,
+      metadata: { category, reportedProfileId },
+    });
+
+    return res.rows[0];
+  },
+
+  async sendMessage(senderProfileId: string, receiverProfileId: string, plainText: string) {
+    if (senderProfileId === receiverProfileId) throw new Error("Cannot message yourself");
+    if (!plainText || !plainText.trim()) throw new Error("Message body cannot be empty");
+
+    // 1. Invariant: Check if either party blocked the other
+    const blocked = await this.isBlocked(senderProfileId, receiverProfileId);
+    if (blocked) {
+      throw new Error("Cannot send message: Communication is restricted between these profiles.");
+    }
+
+    // 2. Invariant: Check if mutual interest accepted (both approved)
+    const mutualRes = await this.query(
+      `SELECT status FROM public.interests 
+       WHERE ((sender_profile_id = $1 AND receiver_profile_id = $2)
+          OR (sender_profile_id = $2 AND receiver_profile_id = $1))
+         AND status = 'ACCEPTED'
+       LIMIT 1;`,
+      [senderProfileId, receiverProfileId]
+    );
+
+    if (mutualRes.rows.length === 0) {
+      throw new Error(
+        "PRIVACY VIOLATION: In-app messaging is unlocked ONLY after mutual interest acceptance."
+      );
+    }
+
+    // 3. Encrypt message at rest using AES-256-GCM
+    const encrypted = encryptData(plainText.trim());
+
+    const res = await this.query(
+      `INSERT INTO public.messages (
+        sender_profile_id, receiver_profile_id, encrypted_body, iv, tag
+      ) VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, sender_profile_id, receiver_profile_id, created_at, read_at;`,
+      [senderProfileId, receiverProfileId, encrypted.ciphertext, encrypted.iv, encrypted.tag]
+    );
+
+    await this.logAuditEvent({
+      actorId: senderProfileId,
+      action: "MESSAGE_SENT",
+      targetType: "PROFILE",
+      targetId: receiverProfileId,
+      metadata: { messageId: res.rows[0].id },
+    });
+
+    return {
+      id: res.rows[0].id,
+      senderProfileId: res.rows[0].sender_profile_id,
+      receiverProfileId: res.rows[0].receiver_profile_id,
+      body: plainText.trim(),
+      createdAt: res.rows[0].created_at,
+      readAt: res.rows[0].read_at,
+    };
+  },
+
+  async getMessages(profileId1: string, profileId2: string) {
+    const res = await this.query(
+      `SELECT id, sender_profile_id, receiver_profile_id, encrypted_body, iv, tag, read_at, created_at
+       FROM public.messages
+       WHERE (sender_profile_id = $1 AND receiver_profile_id = $2)
+          OR (sender_profile_id = $2 AND receiver_profile_id = $1)
+       ORDER BY created_at ASC;`,
+      [profileId1, profileId2]
+    );
+
+    return res.rows.map((r) => {
+      let decryptedText = "[Encrypted Content]";
+      try {
+        decryptedText = decryptData(r.encrypted_body, r.iv, r.tag);
+      } catch {
+        decryptedText = "[Error decrypting message]";
+      }
+      return {
+        id: r.id,
+        senderProfileId: r.sender_profile_id,
+        receiverProfileId: r.receiver_profile_id,
+        body: decryptedText,
+        readAt: r.read_at,
+        createdAt: r.created_at,
+      };
+    });
+  },
+
+  async markMessagesAsRead(viewerProfileId: string, partnerProfileId: string) {
+    const res = await this.query(
+      `UPDATE public.messages
+       SET read_at = NOW()
+       WHERE receiver_profile_id = $1 AND sender_profile_id = $2 AND read_at IS NULL
+       RETURNING id;`,
+      [viewerProfileId, partnerProfileId]
+    );
+    return { markedCount: res.rows.length };
+  },
+
+  async getConversationsList(profileId: string) {
+    const partnersRes = await this.query(
+      `SELECT DISTINCT
+         CASE WHEN i.sender_profile_id = $1 THEN i.receiver_profile_id ELSE i.sender_profile_id END AS partner_id
+       FROM public.interests i
+       WHERE (i.sender_profile_id = $1 OR i.receiver_profile_id = $1)
+         AND i.status = 'ACCEPTED';`,
+      [profileId]
+    );
+
+    const conversations = [];
+
+    for (const row of partnersRes.rows) {
+      const partnerId = row.partner_id;
+      const blocked = await this.isBlocked(profileId, partnerId);
+
+      const [pRes, lastMsgRes, unreadRes] = await Promise.all([
+        this.query(
+          `SELECT p.id, p.public_id, p.first_name, p.gender, p.state, p.city,
+                  (SELECT storage_key FROM public.profile_photos WHERE profile_id = p.id AND visibility = 'PUBLIC_TO_MEMBERS' LIMIT 1) as photo_key
+           FROM public.profiles p WHERE p.id = $1;`,
+          [partnerId]
+        ),
+        this.query(
+          `SELECT id, sender_profile_id, encrypted_body, iv, tag, created_at, read_at
+           FROM public.messages
+           WHERE (sender_profile_id = $1 AND receiver_profile_id = $2)
+              OR (sender_profile_id = $2 AND receiver_profile_id = $1)
+           ORDER BY created_at DESC LIMIT 1;`,
+          [profileId, partnerId]
+        ),
+        this.query(
+          `SELECT COUNT(*)::int as count FROM public.messages
+           WHERE receiver_profile_id = $1 AND sender_profile_id = $2 AND read_at IS NULL;`,
+          [profileId, partnerId]
+        ),
+      ]);
+
+      const partner = pRes.rows[0];
+      if (!partner) continue;
+
+      let lastMessage = null;
+      if (lastMsgRes.rows[0]) {
+        const m = lastMsgRes.rows[0];
+        let text = "[Encrypted Content]";
+        try {
+          text = decryptData(m.encrypted_body, m.iv, m.tag);
+        } catch {}
+        lastMessage = {
+          body: text,
+          senderProfileId: m.sender_profile_id,
+          createdAt: m.created_at,
+          readAt: m.read_at,
+        };
+      }
+
+      conversations.push({
+        partnerId: partner.id,
+        partnerPublicId: partner.public_id,
+        partnerName: partner.first_name,
+        partnerGender: partner.gender,
+        partnerLocation: `${partner.city || ""}, ${partner.state || ""}`,
+        partnerPhotoKey: partner.photo_key,
+        lastMessage,
+        unreadCount: unreadRes.rows[0]?.count || 0,
+        isBlocked: blocked,
+      });
+    }
+
+    conversations.sort((a, b) => {
+      const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+      const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return conversations;
   },
 
   // --------------------------------------------------------------------------
