@@ -1,38 +1,43 @@
+"use client";
+
 import React from "react";
-import { ShieldCheck, Lock, Users, FileCheck2, UserCheck, Heart } from "lucide-react";
+import Link from "next/link";
+import { useTranslation } from "@/lib/i18n/context";
+import { ShieldCheck, Lock, UserCheck, FileCheck2, Heart } from "lucide-react";
 
 export default function HomePage() {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-16 py-8">
       {/* Hero Section */}
       <section className="max-w-6xl mx-auto px-4 text-center space-y-6 pt-8">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-semibold tracking-wide uppercase">
+        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-semibold tracking-wide">
           <ShieldCheck className="w-4 h-4 text-orange-600" />
-          <span>Pal (Gadaria) Community Dedicated Platform</span>
+          <span>{t("home.badge")}</span>
         </div>
 
         <h1 className="text-4xl md:text-5xl font-extrabold text-stone-900 tracking-tight max-w-3xl mx-auto leading-tight">
-          Trusted Profiles. Respectful Connections. <br />
-          <span className="text-orange-600">Private by Design.</span>
+          {t("home.heroTitle1")} <br />
+          <span className="text-orange-600">{t("home.heroTitle2")}</span>
         </h1>
 
         <p className="text-lg text-stone-600 max-w-2xl mx-auto leading-relaxed">
-          The high-trust matrimony platform built specifically for the Pal community. 
-          Your phone number and private biodata are never exposed until both parties explicitly agree.
+          {t("home.heroSubtitle")}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <a
+          <Link
             href="/register"
             className="w-full sm:w-auto px-8 py-3.5 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-xl shadow-md transition text-base"
           >
-            Create Verified Profile (Free)
-          </a>
+            {t("home.ctaRegister")}
+          </Link>
           <a
-            href="#how-it-works"
+            href="#safety"
             className="w-full sm:w-auto px-8 py-3.5 bg-white hover:bg-stone-50 text-stone-800 font-semibold rounded-xl border border-stone-300 shadow-sm transition text-base"
           >
-            Explore How We Protect Privacy
+            {t("home.ctaExplore")}
           </a>
         </div>
       </section>
@@ -44,10 +49,9 @@ export default function HomePage() {
             <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
               <Lock className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-stone-900">Zero Contact Leakage</h3>
+            <h3 className="text-lg font-bold text-stone-900">{t("home.card1Title")}</h3>
             <p className="text-sm text-stone-600 leading-relaxed">
-              Phone numbers, email addresses, and residential locations are strictly encrypted. 
-              They are never sent in search results or public profile cards.
+              {t("home.card1Desc")}
             </p>
           </div>
 
@@ -55,10 +59,9 @@ export default function HomePage() {
             <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
               <UserCheck className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-stone-900">Dual-Approval Exchange</h3>
+            <h3 className="text-lg font-bold text-stone-900">{t("home.card2Title")}</h3>
             <p className="text-sm text-stone-600 leading-relaxed">
-              Contact exchange is an iron-clad bilateral state machine. 
-              Both parties must independently approve the request before contact info is revealed.
+              {t("home.card2Desc")}
             </p>
           </div>
 
@@ -66,10 +69,9 @@ export default function HomePage() {
             <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
               <FileCheck2 className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-stone-900">Watermarked Biodata</h3>
+            <h3 className="text-lg font-bold text-stone-900">{t("home.card3Title")}</h3>
             <p className="text-sm text-stone-600 leading-relaxed">
-              When you permit a family to view your biodata, downloaded PDFs carry a tamper-evident 
-              watermark encoding the recipient&apos;s unique ID and timestamp.
+              {t("home.card3Desc")}
             </p>
           </div>
         </div>
@@ -78,9 +80,9 @@ export default function HomePage() {
       {/* How It Works Section */}
       <section id="how-it-works" className="max-w-6xl mx-auto px-4 bg-orange-50/60 rounded-3xl p-8 md:p-12 border border-orange-100">
         <div className="text-center max-w-2xl mx-auto mb-10 space-y-2">
-          <h2 className="text-2xl md:text-3xl font-bold text-stone-900">How Pal Matrimony Works</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-stone-900">{t("home.stepsTitle")}</h2>
           <p className="text-stone-600 text-sm">
-            Simple, dignified steps ensuring complete respect and security for candidates and families.
+            {t("home.stepsSubtitle")}
           </p>
         </div>
 
@@ -89,9 +91,9 @@ export default function HomePage() {
             <div className="w-10 h-10 rounded-full bg-orange-600 text-white font-bold mx-auto flex items-center justify-center text-sm shadow">
               1
             </div>
-            <h4 className="font-semibold text-stone-900">Register with OTP</h4>
+            <h4 className="font-semibold text-stone-900">{t("home.step1Title")}</h4>
             <p className="text-xs text-stone-500">
-              Verify your mobile and email securely. Underage profiles are rejected at the gate.
+              {t("home.step1Desc")}
             </p>
           </div>
 
@@ -99,9 +101,9 @@ export default function HomePage() {
             <div className="w-10 h-10 rounded-full bg-orange-600 text-white font-bold mx-auto flex items-center justify-center text-sm shadow">
               2
             </div>
-            <h4 className="font-semibold text-stone-900">Complete Biodata</h4>
+            <h4 className="font-semibold text-stone-900">{t("home.step2Title")}</h4>
             <p className="text-xs text-stone-500">
-              Add education, profession, family background, and private photos with visibility controls.
+              {t("home.step2Desc")}
             </p>
           </div>
 
@@ -109,9 +111,9 @@ export default function HomePage() {
             <div className="w-10 h-10 rounded-full bg-orange-600 text-white font-bold mx-auto flex items-center justify-center text-sm shadow">
               3
             </div>
-            <h4 className="font-semibold text-stone-900">Manual Verification</h4>
+            <h4 className="font-semibold text-stone-900">{t("home.step3Title")}</h4>
             <p className="text-xs text-stone-500">
-              Admin team reviews selfies against profile photos to issue genuine verification badges.
+              {t("home.step3Desc")}
             </p>
           </div>
 
@@ -119,9 +121,9 @@ export default function HomePage() {
             <div className="w-10 h-10 rounded-full bg-orange-600 text-white font-bold mx-auto flex items-center justify-center text-sm shadow">
               4
             </div>
-            <h4 className="font-semibold text-stone-900">Connect with Dignity</h4>
+            <h4 className="font-semibold text-stone-900">{t("home.step4Title")}</h4>
             <p className="text-xs text-stone-500">
-              Exchange interests, chat after mutual consent, and release contact numbers only when ready.
+              {t("home.step4Desc")}
             </p>
           </div>
         </div>
@@ -130,18 +132,17 @@ export default function HomePage() {
       {/* Community Callout */}
       <section className="max-w-4xl mx-auto px-4 text-center space-y-4">
         <Heart className="w-8 h-8 text-orange-600 mx-auto" />
-        <h3 className="text-2xl font-bold text-stone-900">For the Community, By the Community</h3>
+        <h3 className="text-2xl font-bold text-stone-900">{t("home.communityCalloutTitle")}</h3>
         <p className="text-stone-600 text-sm max-w-xl mx-auto leading-relaxed">
-          Pal Matrimony honors our traditions while providing modern privacy standards. 
-          Managed directly by adult candidates or trusted family managers with granular permission controls.
+          {t("home.communityCalloutDesc")}
         </p>
         <div className="pt-2">
-          <a
+          <Link
             href="/register"
             className="inline-block px-6 py-3 bg-stone-900 hover:bg-stone-800 text-white font-medium text-sm rounded-xl shadow-sm transition"
           >
-            Join Pal Matrimony Today
-          </a>
+            {t("home.joinToday")}
+          </Link>
         </div>
       </section>
     </div>

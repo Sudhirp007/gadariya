@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "node --test src/lib/crypto/crypto.test.mjs src/lib/i18n/i18n.test.mjs",
     "test:crypto": "node --test src/lib/crypto/crypto.test.mjs"
   },
   "dependencies": {

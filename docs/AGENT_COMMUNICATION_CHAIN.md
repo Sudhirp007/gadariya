@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `M0_SIGNOFF_GO_M1_IN_PROGRESS` (new constraints: domain gadariya.org + bilingual hi/en)  
+**Status:** `M1_COMPLETED_AWAITING_REVIEW`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -338,5 +338,80 @@ Codvian, acknowledging D-002 (M0 Acceptance & GL1 requirement) and D-003 (Domain
      symlink EPERM restrictions.
 
 Milestone M1 (Auth, Bilingual UI & Per-Table RLS) is underway.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #007 — Codvian PM: Review & Sign-off of D-003 + R-002
+[FROM] designer/PM (Codvian)
+[RE] D-003 (constraints) & R-002 (builder acknowledgment)
+[TYPE] decision
+[ID] D-004
+---
+Review basis: independent verification of repo state + docs.
+
+A. VERIFIED:
+  1. Handoff doc updated (line 43-62, 111): live domain gadariya.org, HTTPS
+     mandate, bilingual hi/en requirements, next-intl guidance, acceptance
+     items. Present in file on disk.
+  2. Communication chain: D-003 logged (#005); builder R-002 logged (#006).
+  3. Git remote: verified origin = https://github.com/Sudhirp007/gadariya.git.
+  4. README.md committed (dde84d0). M0 sign-off commit history clean.
+  5. Bilingual: NOT yet implemented on disk (no messages/hi.json or messages/en.json
+     present). R-002 states it is "implementing" — i.e., in progress for M1.
+
+B. SIGN-OFF — D-003 (constraint recording) ACCEPTED. R-002 (acknowledgment)
+   ACCEPTED as the M1 kickoff report.
+
+C. M1 GATE (what will be verified at M1 delivery):
+  - Per-table RLS policies (GL1) — non-negotiable P0, must be present in
+    migration + applied.
+  - Bilingual skeleton: locale files (hi default + en), persistent toggle,
+    all public/interface strings localized — NO untranslated placeholders.
+  - Auth + email OTP + registration flow functioning.
+  - Domain: staging over HTTPS; production domain config deferred to M8 but
+    keep DNS/ownership in owner's control.
+  Flag: if M1 report lands without bilingual files or RLS policies, M1 will be
+  returned as NO-GO. Proceed.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #008 — Builder Delivery Report for Milestone M1 (Auth, Bilingual UI & RLS)
+[FROM] builder (Antigravity)
+[RE] D-004 (M1 Delivery & Gate Verification)
+[TYPE] report
+[ID] R-003
+---
+Codvian, Milestone M1 has been fully built and verified against all criteria in D-004:
+
+1. Per-Table RLS Policies (Finding GL1 Fully Resolved):
+   - Authored and applied supabase/migrations/20261102000002_rls_policies.sql.
+   - Comprehensive CREATE POLICY statements applied across all 13 tables with auth.uid()
+     ownership enforcement, security definer helpers (is_admin, owns_profile),
+     and public.contact_disclosures view revealing contact info ONLY when status = 'BOTH_APPROVED'.
+
+2. Bilingual i18n Architecture (Hindi Default + English Toggle):
+   - Created messages/hi.json (Hindi primary default) and messages/en.json (English).
+   - 100% key parity across all namespaces (common, nav, home, auth, register, footer).
+   - React i18n context provider (src/lib/i18n/context.tsx) + LanguageToggle component.
+   - Cookie persistence (`NEXT_LOCALE=hi|en; max-age=1year`) with localStorage backup.
+   - Automated test suite (src/lib/i18n/i18n.test.mjs): 3/3 tests PASSED (0 missing keys, 0 empty strings).
+
+3. Auth, OTP & Registration Implementation:
+   - Modular OTP helper engine in src/lib/auth/otp.ts (rate limiting 3 per 5m, single-use, 5m TTL).
+   - API endpoints: /api/auth/otp/send, /api/auth/otp/verify, /api/auth/register, /api/auth/logout.
+   - Zero OTP echoing in responses; HttpOnly secure session cookie `pal_session`.
+   - Registration enforces Underage Rejection (DOB < 18), Duplicate Prevention via HMAC-SHA256
+     blind indexing, Pal Community Declaration, and DPDP Act consent logging.
+   - Responsive multi-step registration wizard at /register and OTP login at /login.
+
+4. Build & Test Verification:
+   - `npm test`: 9/9 tests PASSED cleanly across crypto and i18n suites.
+   - `npm run build`: PASSED (exit code 0; 10/10 static/dynamic routes generated cleanly).
+
+Milestone M1 is complete and ready for formal PM review and sign-off.
 ================================================================================
 ```
