@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { verifyAdminMfaCode } from "@/lib/admin/mfa";
+import {
+  verifyAdminMfaCode,
+  verifyStatelessMfaChallenge,
+  ADMIN_MFA_CHALLENGE_COOKIE,
+} from "@/lib/admin/mfa";
 import { attachAdminSessionCookie, AdminRole } from "@/lib/auth/admin-session";
 
 const mfaVerifySchema = z.object({
@@ -21,8 +26,13 @@ export async function POST(req: Request) {
     const { email, code } = parsed.data;
     const normalizedEmail = email.toLowerCase().trim();
 
-    const isValid = verifyAdminMfaCode(`ADMIN_MFA:${normalizedEmail}`, code);
-    if (!isValid) {
+    const cookieStore = await cookies();
+    const challengeCookie = cookieStore.get(ADMIN_MFA_CHALLENGE_COOKIE)?.value;
+
+    const isValidMemoryOrPin = verifyAdminMfaCode(`ADMIN_MFA:${normalizedEmail}`, code);
+    const isValidStateless = verifyStatelessMfaChallenge(challengeCookie, normalizedEmail, code);
+
+    if (!isValidMemoryOrPin && !isValidStateless) {
       return NextResponse.json(
         { error: "Invalid or expired MFA code. Please request a new challenge." },
         { status: 401 }
@@ -49,6 +59,9 @@ export async function POST(req: Request) {
       email: admin.email,
       role: admin.role as AdminRole,
     });
+
+    // Clear one-time MFA challenge cookie
+    response.cookies.delete(ADMIN_MFA_CHALLENGE_COOKIE);
 
     await db.logAuditEvent({
       actorId: admin.id,

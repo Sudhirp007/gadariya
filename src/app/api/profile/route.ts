@@ -15,66 +15,85 @@ function calculateCompletionScore(profile: any): number {
   return Math.min(score, 100);
 }
 
-async function resolveProfileId(): Promise<string> {
-  const session = await getServerSession();
-  if (session?.profileId) {
-    return session.profileId;
-  }
-  // Fallback to ensuring and returning demo seed profile
-  return await db.seedDemoProfileIfEmpty();
-}
-
 export async function GET() {
   try {
-    const profileId = await resolveProfileId();
-    const profile = await db.getFullProfile(profileId);
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    const profile = await db.getFullProfile(session.profileId);
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
-    return NextResponse.json({ profile });
+    return NextResponse.json({ profile }, { headers: { "Cache-Control": "no-store" } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
+const optStr = z.string().nullable().optional();
+const optEnum = <T extends [string, ...string[]]>(vals: T) =>
+  z.preprocess(
+    (v) => (v === "" || v === null ? undefined : v),
+    z.enum(vals).optional()
+  );
+
 const updateProfileSchema = z.object({
-  highestEducation: z.string().optional(),
-  educationDetail: z.string().optional(),
-  employedIn: z.string().optional(),
-  occupation: z.string().optional(),
-  annualIncomeRange: z.string().optional(),
-  diet: z.string().optional(),
-  aboutMe: z.string().max(1000).optional(),
+  // Core profile fields
+  firstName: z.string().min(2).max(80).optional(),
+  heightCm: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? null : Number(v)),
+    z.number().min(100).max(250).nullable().optional()
+  ),
+  maritalStatus: optEnum(["NEVER_MARRIED", "DIVORCED", "WIDOWED", "AWAITING_DIVORCE"]),
+  state: z.string().min(2).max(80).optional(),
+  city: z.string().min(2).max(80).optional(),
+  subCommunity: optStr,
+  isDiscoverable: z.boolean().optional(),
+  // Details
+  highestEducation: optStr,
+  educationDetail: optStr,
+  employedIn: optEnum(["PRIVATE", "GOVERNMENT", "BUSINESS", "DEFENCE", "NOT_WORKING", "OTHER"]),
+  occupation: optStr,
+  annualIncomeRange: optStr,
+  diet: optEnum(["VEGETARIAN", "NON_VEGETARIAN", "EGGETARIAN", "JAIN"]),
+  aboutMe: z.string().max(1000).nullable().optional(),
   // Family
-  fatherOccupation: z.string().optional(),
-  motherOccupation: z.string().optional(),
+  fatherOccupation: optStr,
+  motherOccupation: optStr,
   brothersCount: z.number().min(0).optional(),
   sistersCount: z.number().min(0).optional(),
-  familyType: z.enum(["NUCLEAR", "JOINT"]).optional(),
-  familyValues: z.enum(["TRADITIONAL", "MODERATE", "LIBERAL"]).optional(),
-  familyLocation: z.string().optional(),
-  aboutFamily: z.string().max(1000).optional(),
+  familyType: optEnum(["NUCLEAR", "JOINT"]),
+  familyValues: optEnum(["TRADITIONAL", "MODERATE", "LIBERAL"]),
+  familyLocation: optStr,
+  aboutFamily: z.string().max(1000).nullable().optional(),
   // Preferences
-  prefMinAge: z.number().min(18).optional(),
-  prefMaxAge: z.number().min(18).optional(),
-  prefMinHeightCm: z.number().optional(),
-  prefMaxHeightCm: z.number().optional(),
+  prefMinAge: z.number().min(18).max(80).optional(),
+  prefMaxAge: z.number().min(18).max(80).optional(),
+  prefMinHeightCm: z.number().min(100).max(250).optional(),
+  prefMaxHeightCm: z.number().min(100).max(250).optional(),
   prefMaritalStatus: z.array(z.string()).optional(),
   prefStates: z.array(z.string()).optional(),
   prefCities: z.array(z.string()).optional(),
-  // Publication Status
-  publicationStatus: z.enum(["DRAFT", "PENDING_REVIEW", "PUBLISHED", "SUSPENDED"]).optional(),
-  isDiscoverable: z.boolean().optional(),
 });
 
 export async function PUT(req: Request) {
   try {
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
     const body = await req.json();
     const parsed = updateProfileSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Validation failed", details: parsed.error.format() }, { status: 400 });
+      return NextResponse.json(
+        { error: "Validation failed. Please review your entries.", details: parsed.error.format() },
+        { status: 400 }
+      );
     }
 
     const updates = parsed.data;
@@ -100,7 +119,7 @@ export async function PUT(req: Request) {
       }
     }
 
-    const profileId = await resolveProfileId();
+    const profileId = session.profileId;
     const existing = await db.getFullProfile(profileId);
     if (!existing) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
@@ -110,15 +129,21 @@ export async function PUT(req: Request) {
     const newCompletionScore = calculateCompletionScore(merged);
 
     const updatedProfile = await db.updateFullProfile(profileId, {
+      firstName: updates.firstName,
+      heightCm: updates.heightCm,
+      maritalStatus: updates.maritalStatus,
+      state: updates.state,
+      city: updates.city,
+      subCommunity: updates.subCommunity,
+      isDiscoverable: updates.isDiscoverable,
       completionScore: newCompletionScore,
-      publicationStatus: updates.publicationStatus,
       details: {
         highestEducation: updates.highestEducation,
         educationDetail: updates.educationDetail,
-        employedIn: updates.employedIn,
+        employedIn: updates.employedIn ?? (body.employedIn === "" ? null : undefined),
         occupation: updates.occupation,
         annualIncomeRange: updates.annualIncomeRange,
-        diet: updates.diet,
+        diet: updates.diet ?? (body.diet === "" ? null : undefined),
         aboutMe: updates.aboutMe,
       },
       family: {
@@ -126,8 +151,8 @@ export async function PUT(req: Request) {
         motherOccupation: updates.motherOccupation,
         brothersCount: updates.brothersCount,
         sistersCount: updates.sistersCount,
-        familyType: updates.familyType,
-        familyValues: updates.familyValues,
+        familyType: updates.familyType ?? (body.familyType === "" ? null : undefined),
+        familyValues: updates.familyValues ?? (body.familyValues === "" ? null : undefined),
         familyLocation: updates.familyLocation,
         aboutFamily: updates.aboutFamily,
       },
@@ -142,9 +167,16 @@ export async function PUT(req: Request) {
       },
     });
 
+    await db.logAuditEvent({
+      actorId: session.userId,
+      action: "PROFILE_UPDATED",
+      targetType: "PROFILE",
+      targetId: profileId,
+    });
+
     return NextResponse.json({
       success: true,
-      message: "Profile updated successfully in PostgreSQL",
+      message: "Profile saved successfully!",
       profile: updatedProfile,
     });
   } catch (err: unknown) {

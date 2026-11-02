@@ -111,6 +111,7 @@ export default function LoginPage() {
       }
 
       setSuccess(true);
+      window.dispatchEvent(new Event("pal-auth-changed"));
       setTimeout(() => {
         router.push("/profile");
       }, 1000);
@@ -146,6 +147,7 @@ export default function LoginPage() {
       }
 
       setSuccess(true);
+      window.dispatchEvent(new Event("pal-auth-changed"));
       setTimeout(() => {
         router.push("/profile");
       }, 1000);

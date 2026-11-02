@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import { VerificationBadges, BadgeInfo } from "@/components/VerificationBadges";
+import { compressImageFile } from "@/lib/media/compress-image";
 import {
   ShieldCheck,
   Camera,
@@ -12,13 +14,12 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Sparkles,
-  Info,
   Lock,
 } from "lucide-react";
 
 export default function VerificationPage() {
   const { t } = useTranslation();
+  const router = useRouter();
 
   const [badges, setBadges] = useState<BadgeInfo[]>([
     {
@@ -60,7 +61,11 @@ export default function VerificationPage() {
     let isMounted = true;
     async function loadStatus() {
       try {
-        const res = await fetch("/api/verification/status");
+        const res = await fetch("/api/verification/status", { cache: "no-store" });
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           if (data.verification?.badges && isMounted) {
@@ -75,7 +80,7 @@ export default function VerificationPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -98,12 +103,15 @@ export default function VerificationPage() {
     setSuccessMsg(null);
 
     try {
+      const compressed = await compressImageFile(selectedFile, 720, 0.8);
+
       const res = await fetch("/api/verification/selfie", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filename: selectedFile.name || "live_selfie.jpg",
-          contentType: selectedFile.type || "image/jpeg",
+          contentType: compressed.contentType,
+          imageBase64: compressed.dataUrl,
         }),
       });
 

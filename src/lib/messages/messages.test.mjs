@@ -32,7 +32,7 @@ test("Milestone M7: In-App Encrypted Messaging & Safety Suite", async (t) => {
   // Deleting the two seeded users cascades to their profiles, interests,
   // messages, blocks, and reports (FKs use ON DELETE CASCADE), so no
   // fabricated rows leak into the database / discovery results.
-  await t.after(async () => {
+  t.after(async () => {
     try {
       await db.query(`DELETE FROM public.users WHERE id IN ($1, $2);`, [u1, u2]);
     } catch {

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import {
   MessageSquare,
@@ -17,28 +18,32 @@ import {
 
 export default function ConversationsPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const loadConversations = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/messages/conversations");
-      if (res.ok) {
-        const data = await res.json();
-        setConversations(data.conversations || []);
-      }
-    } catch (err) {
-      console.error("Error loading conversations:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    async function loadConversations() {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/messages/conversations", { cache: "no-store" });
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          setConversations(data.conversations || []);
+        }
+      } catch (err) {
+        console.error("Error loading conversations:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
     loadConversations();
-  }, []);
+  }, [router]);
 
   const filtered = conversations.filter(
     (c) =>

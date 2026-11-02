@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import {
@@ -14,21 +15,25 @@ import {
   Shield,
   Eye,
   Camera,
+  Image as ImageIcon,
   RefreshCw,
   Search,
   Check,
   X,
-  Slash,
+  Activity,
 } from "lucide-react";
 
 interface AdminStats {
   pendingProfiles: number;
+  pendingPhotos: number;
   pendingVerifications: number;
   activeReports: number;
   totalUsers: number;
+  totalProfiles: number;
+  publishedProfiles: number;
 }
 
-interface PendingProfile {
+interface AdminProfileItem {
   id: string;
   publicId: string;
   firstName: string;
@@ -37,12 +42,29 @@ interface PendingProfile {
   city: string;
   state: string;
   subCommunity?: string;
+  status: string;
+  isDiscoverable?: boolean;
   highestEducation?: string;
   occupation?: string;
   aboutMe?: string;
   fatherOccupation?: string;
   familyType?: string;
   completionScore: number;
+  createdAt?: string;
+}
+
+interface AdminPhotoItem {
+  id: string;
+  profile_id: string;
+  visibility: string;
+  moderation_status: string;
+  is_primary: boolean;
+  created_at: string;
+  has_image: boolean;
+  public_id: string;
+  first_name: string;
+  city: string;
+  state: string;
 }
 
 interface VerificationItem {
@@ -51,6 +73,7 @@ interface VerificationItem {
   verification_type: string;
   status: string;
   selfie_storage_key?: string;
+  selfie_image_data?: string | null;
   created_at: string;
   public_id: string;
   first_name: string;
@@ -68,6 +91,15 @@ interface ReportItem {
   reported_name: string;
 }
 
+interface AuditLogItem {
+  id: string;
+  actor_type: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  created_at: string;
+}
+
 export default function AdminDashboardPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -75,18 +107,28 @@ export default function AdminDashboardPage() {
   const [admin, setAdmin] = useState<{ id: string; email: string; role: string } | null>(null);
   const [stats, setStats] = useState<AdminStats>({
     pendingProfiles: 0,
+    pendingPhotos: 0,
     pendingVerifications: 0,
     activeReports: 0,
     totalUsers: 0,
+    totalProfiles: 0,
+    publishedProfiles: 0,
   });
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "profiles" | "verifications" | "reports">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "profiles" | "photos" | "verifications" | "reports">("overview");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Filters
+  const [profileStatusFilter, setProfileStatusFilter] = useState<string>("ALL");
+  const [profileSearch, setProfileSearch] = useState<string>("");
+  const [photoStatusFilter, setPhotoStatusFilter] = useState<string>("PENDING");
+
   // Queues data
-  const [profiles, setProfiles] = useState<PendingProfile[]>([]);
+  const [profiles, setProfiles] = useState<AdminProfileItem[]>([]);
+  const [photos, setPhotos] = useState<AdminPhotoItem[]>([]);
   const [verifications, setVerifications] = useState<VerificationItem[]>([]);
   const [reports, setReports] = useState<ReportItem[]>([]);
 
@@ -101,7 +143,7 @@ export default function AdminDashboardPage() {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/dashboard");
+      const res = await fetch("/api/admin/dashboard", { cache: "no-store" });
       if (res.status === 401) {
         router.push("/admin/login");
         return;
@@ -109,6 +151,7 @@ export default function AdminDashboardPage() {
       const data = await res.json();
       if (data.admin) setAdmin(data.admin);
       if (data.stats) setStats(data.stats);
+      if (data.recentAuditLogs) setAuditLogs(data.recentAuditLogs);
     } catch {
       showNotification("error", "Error connecting to admin control plane");
     } finally {
@@ -116,9 +159,11 @@ export default function AdminDashboardPage() {
     }
   }, [router]);
 
-  const loadProfilesQueue = async () => {
+  const loadProfilesQueue = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/profiles");
+      const params = new URLSearchParams({ status: profileStatusFilter });
+      if (profileSearch.trim()) params.set("search", profileSearch.trim());
+      const res = await fetch(`/api/admin/profiles?${params.toString()}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setProfiles(data.profiles || []);
@@ -126,11 +171,23 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [profileStatusFilter, profileSearch]);
 
-  const loadVerificationsQueue = async () => {
+  const loadPhotosQueue = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/verifications");
+      const res = await fetch(`/api/admin/photos?status=${photoStatusFilter}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setPhotos(data.photos || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [photoStatusFilter]);
+
+  const loadVerificationsQueue = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/verifications", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setVerifications(data.queue || []);
@@ -138,11 +195,11 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
-  const loadReportsQueue = async () => {
+  const loadReportsQueue = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/reports");
+      const res = await fetch("/api/admin/reports", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setReports(data.reports || []);
@@ -150,7 +207,7 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -158,12 +215,19 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (activeTab === "profiles") loadProfilesQueue();
+    if (activeTab === "photos") loadPhotosQueue();
     if (activeTab === "verifications") loadVerificationsQueue();
     if (activeTab === "reports") loadReportsQueue();
-  }, [activeTab]);
+  }, [activeTab, loadProfilesQueue, loadPhotosQueue, loadVerificationsQueue, loadReportsQueue]);
 
   const handleModerateProfile = async (profileId: string, action: "PUBLISHED" | "REJECTED" | "SUSPENDED") => {
-    const notes = actionNotes[profileId] || (action === "PUBLISHED" ? "Approved by admin verification" : "Profile rejected after review");
+    const notes =
+      actionNotes[profileId] ||
+      (action === "PUBLISHED"
+        ? "Approved and published by administrator"
+        : action === "SUSPENDED"
+          ? "Profile suspended by administrator"
+          : "Profile rejected after review");
     setActionLoading(true);
 
     try {
@@ -176,11 +240,46 @@ export default function AdminDashboardPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action failed");
 
-      showNotification("success", `Profile successfully ${action.toLowerCase()}`);
-      setProfiles((prev) => prev.filter((p) => p.id !== profileId));
-      setStats((prev) => ({ ...prev, pendingProfiles: Math.max(0, prev.pendingProfiles - 1) }));
+      showNotification("success", `Member profile marked as ${action}`);
+      if (profileStatusFilter === "ALL" || profileStatusFilter === action) {
+        setProfiles((prev) =>
+          prev.map((p) => (p.id === profileId ? { ...p, status: action } : p))
+        );
+      } else {
+        setProfiles((prev) => prev.filter((p) => p.id !== profileId));
+      }
+      await loadDashboard();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error executing action";
+      showNotification("error", msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleModeratePhoto = async (photoId: string, action: "APPROVED" | "REJECTED") => {
+    const notes = actionNotes[photoId] || (action === "APPROVED" ? "Photo approved by moderator" : "Photo rejected by moderator");
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoId, action, notes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Photo moderation failed");
+
+      showNotification("success", `Photo ${action.toLowerCase()}`);
+      if (photoStatusFilter === "ALL" || photoStatusFilter === action) {
+        setPhotos((prev) =>
+          prev.map((ph) => (ph.id === photoId ? { ...ph, moderation_status: action } : ph))
+        );
+      } else {
+        setPhotos((prev) => prev.filter((ph) => ph.id !== photoId));
+      }
+      await loadDashboard();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error moderating photo";
       showNotification("error", msg);
     } finally {
       setActionLoading(false);
@@ -239,6 +338,7 @@ export default function AdminDashboardPage() {
 
   const handleLogout = async () => {
     await fetch("/api/admin/logout", { method: "POST" });
+    window.dispatchEvent(new Event("pal-auth-changed"));
     router.push("/admin/login");
   };
 
@@ -301,14 +401,31 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* 4 Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 5 Stats Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-warmgrey shadow-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-charcoal-light">Registered Members</span>
+            <Users className="w-4 h-4 text-forest" />
+          </div>
+          <div className="text-2xl font-black text-forest">{stats.totalProfiles}</div>
+          <span className="text-[11px] text-charcoal-light block">{stats.publishedProfiles} Published</span>
+        </div>
+
         <div className="bg-white p-5 rounded-2xl border border-warmgrey shadow-sm space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-charcoal-light">{t("admin.statPendingProfiles")}</span>
             <FileCheck2 className="w-4 h-4 text-plum" />
           </div>
           <div className="text-2xl font-black text-plum">{stats.pendingProfiles}</div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-warmgrey shadow-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-charcoal-light">Pending Photos</span>
+            <ImageIcon className="w-4 h-4 text-plum" />
+          </div>
+          <div className="text-2xl font-black text-plum">{stats.pendingPhotos || 0}</div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-warmgrey shadow-sm space-y-2">
@@ -326,21 +443,14 @@ export default function AdminDashboardPage() {
           </div>
           <div className="text-2xl font-black text-rose-600">{stats.activeReports}</div>
         </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-warmgrey shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-charcoal-light">{t("admin.statTotalUsers")}</span>
-            <Users className="w-4 h-4 text-forest" />
-          </div>
-          <div className="text-2xl font-black text-forest">{stats.totalUsers}</div>
-        </div>
       </div>
 
       {/* Tabs Navigation */}
       <div className="flex items-center space-x-2 border-b border-warmgrey pb-1 overflow-x-auto">
         {[
           { id: "overview", label: t("admin.tabOverview"), icon: Shield },
-          { id: "profiles", label: `${t("admin.tabProfiles")} (${stats.pendingProfiles})`, icon: FileCheck2 },
+          { id: "profiles", label: `${t("admin.tabAllMembers")} (${stats.totalProfiles})`, icon: Users },
+          { id: "photos", label: `${t("admin.tabPhotos")} (${stats.pendingPhotos || 0})`, icon: ImageIcon },
           { id: "verifications", label: `${t("admin.tabVerifications")} (${stats.pendingVerifications})`, icon: Camera },
           { id: "reports", label: `${t("admin.tabReports")} (${stats.activeReports})`, icon: ShieldAlert },
         ].map((tab) => {
@@ -363,65 +473,117 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      {/* Tab Content 1: Overview */}
+      {/* Tab Content 1: Overview + Audit Trail */}
       {activeTab === "overview" && (
-        <div className="bg-white rounded-3xl border border-warmgrey p-6 sm:p-8 space-y-6">
-          <div className="border-b border-warmgrey pb-4">
-            <h3 className="text-lg font-bold text-plum">Security & Compliance Dashboard</h3>
-            <p className="text-xs text-charcoal-light">
-              Zero-Trust Community Moderation conforming to PRD v1.0 and DPDP Act 2025.
-            </p>
+        <div className="space-y-6">
+          <div className="bg-white rounded-3xl border border-warmgrey p-6 sm:p-8 space-y-6">
+            <div className="border-b border-warmgrey pb-4">
+              <h3 className="text-lg font-bold text-plum">Security & Compliance Dashboard</h3>
+              <p className="text-xs text-charcoal-light">
+                Zero-Trust Community Moderation conforming to PRD v1.0 and DPDP Act 2025.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl border border-warmgrey bg-ivory space-y-2">
+                <h4 className="text-xs font-bold text-plum uppercase">1. Pre-Moderation AI Guard</h4>
+                <p className="text-xs text-charcoal-light leading-relaxed">
+                  Inception Labs Mercury AI intercepts free-text contact leakage (phone numbers, emails) before submission.
+                </p>
+                <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-forest-50 text-forest text-[11px] font-semibold">
+                  <Check className="w-3 h-3" />
+                  <span>Active</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl border border-warmgrey bg-ivory space-y-2">
+                <h4 className="text-xs font-bold text-plum uppercase">2. Dual-Approval State Engine</h4>
+                <p className="text-xs text-charcoal-light leading-relaxed">
+                  Contact details disclosure view is strictly locked to status = BOTH_APPROVED.
+                </p>
+                <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-forest-50 text-forest text-[11px] font-semibold">
+                  <Check className="w-3 h-3" />
+                  <span>PostgreSQL View Enforced</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl border border-warmgrey bg-ivory space-y-2">
+                <h4 className="text-xs font-bold text-plum uppercase">3. Family Manager Authority (C-06)</h4>
+                <p className="text-xs text-charcoal-light leading-relaxed">
+                  Family guardians strictly prohibited from disclosing candidate contact or ID verification documents.
+                </p>
+                <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-forest-50 text-forest text-[11px] font-semibold">
+                  <Check className="w-3 h-3" />
+                  <span>Check Constraint Guaranteed</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl border border-warmgrey bg-ivory space-y-2">
-              <h4 className="text-xs font-bold text-plum uppercase">1. Pre-Moderation AI Guard</h4>
-              <p className="text-xs text-charcoal-light leading-relaxed">
-                Inception Labs Mercury AI intercepts free-text contact leakage (phone numbers, emails) before submission.
-              </p>
-              <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-forest-50 text-forest text-[11px] font-semibold">
-                <Check className="w-3 h-3" />
-                <span>Active</span>
-              </div>
+          <div className="bg-white rounded-3xl border border-warmgrey p-6 sm:p-8 space-y-4">
+            <div className="flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-plum" />
+              <h3 className="text-base font-bold text-plum">Immutable Security Audit Trail (Recent 25)</h3>
             </div>
-
-            <div className="p-4 rounded-2xl border border-warmgrey bg-ivory space-y-2">
-              <h4 className="text-xs font-bold text-plum uppercase">2. Dual-Approval State Engine</h4>
-              <p className="text-xs text-charcoal-light leading-relaxed">
-                Contact details disclosure view is strictly locked to status = BOTH_APPROVED.
-              </p>
-              <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-forest-50 text-forest text-[11px] font-semibold">
-                <Check className="w-3 h-3" />
-                <span>PostgreSQL View Enforced</span>
+            {auditLogs.length === 0 ? (
+              <p className="text-xs text-charcoal-light">No audit events recorded yet.</p>
+            ) : (
+              <div className="divide-y divide-warmgrey text-xs">
+                {auditLogs.map((log) => (
+                  <div key={log.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-2 py-0.5 rounded bg-plum-50 text-plum font-mono font-bold text-[11px]">
+                        {log.actor_type}
+                      </span>
+                      <span className="font-semibold text-charcoal">{log.action}</span>
+                      <span className="text-charcoal-light">({log.target_type})</span>
+                    </div>
+                    <span className="text-[11px] text-charcoal-light font-mono">
+                      {new Date(log.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
               </div>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-warmgrey bg-ivory space-y-2">
-              <h4 className="text-xs font-bold text-plum uppercase">3. Family Manager Authority (C-06)</h4>
-              <p className="text-xs text-charcoal-light leading-relaxed">
-                Family guardians strictly prohibited from disclosing candidate contact or ID verification documents.
-              </p>
-              <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-forest-50 text-forest text-[11px] font-semibold">
-                <Check className="w-3 h-3" />
-                <span>Check Constraint Guaranteed</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Tab Content 2: Profiles Review Queue */}
+      {/* Tab Content 2: All Registered Members & Profile Moderation */}
       {activeTab === "profiles" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-plum">
-              Profiles Awaiting Approval ({profiles.length})
-            </h3>
+          <div className="bg-white rounded-3xl border border-warmgrey p-5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {["ALL", "PENDING_REVIEW", "PUBLISHED", "SUSPENDED", "REJECTED"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setProfileStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                    profileStatusFilter === st
+                      ? "bg-plum text-ivory"
+                      : "bg-ivory text-charcoal hover:bg-plum-50 border border-warmgrey"
+                  }`}
+                >
+                  {st.replace("_", " ")}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full md:w-72">
+              <Search className="w-4 h-4 text-charcoal-light absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={profileSearch}
+                onChange={(e) => setProfileSearch(e.target.value)}
+                placeholder="Search by Name, PAL ID, or City..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-warmgrey bg-ivory focus:bg-white text-xs focus:outline-none focus:ring-1 focus:ring-plum"
+              />
+            </div>
           </div>
 
           {profiles.length === 0 ? (
             <div className="p-12 text-center bg-white rounded-3xl border border-warmgrey text-xs text-charcoal-light">
-              All submitted profiles have been reviewed. Queue is clean.
+              No member profiles match the selected filter.
             </div>
           ) : (
             <div className="space-y-4">
@@ -429,7 +591,7 @@ export default function AdminDashboardPage() {
                 <div key={p.id} className="bg-white rounded-3xl border border-warmgrey p-6 space-y-4 shadow-sm">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-warmgrey pb-4 gap-2">
                     <div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-extrabold text-plum text-lg">{p.firstName}</span>
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-plum-50 text-plum">
                           {p.publicId}
@@ -437,14 +599,32 @@ export default function AdminDashboardPage() {
                         <span className="text-xs text-charcoal-light">
                           ({p.gender}, {p.age} years)
                         </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            p.status === "PUBLISHED"
+                              ? "bg-forest-50 text-forest border border-forest-200"
+                              : p.status === "PENDING_REVIEW"
+                                ? "bg-gold-50 text-gold-800 border border-gold-300"
+                                : "bg-rose-50 text-plum border border-rose-200"
+                          }`}
+                        >
+                          {p.status}
+                        </span>
                       </div>
                       <p className="text-xs text-charcoal-light mt-0.5">
                         {p.city}, {p.state} • Sub-community: {p.subCommunity || "Pal"}
                       </p>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-3">
                       <span className="text-xs font-semibold text-charcoal">Completion: {p.completionScore}%</span>
+                      <Link
+                        href={`/discovery/${p.publicId}`}
+                        className="p-2 rounded-xl border border-warmgrey hover:bg-ivory text-plum"
+                        title="Inspect Public Biodata"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Link>
                     </div>
                   </div>
 
@@ -458,7 +638,7 @@ export default function AdminDashboardPage() {
                     <div>
                       <span className="font-bold text-charcoal">Family Background:</span>
                       <p className="text-charcoal-light mt-0.5">
-                        Father: {p.fatherOccupation || "Not specified"} ({p.familyType || "Nuclear"})
+                        Father: {p.fatherOccupation || "Not specified"} ({p.familyType || "Not specified"})
                       </p>
                     </div>
                   </div>
@@ -470,7 +650,7 @@ export default function AdminDashboardPage() {
                     </div>
                   )}
 
-                  {/* Notes & Actions */}
+                  {/* Notes & Moderation Actions */}
                   <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <input
                       type="text"
@@ -480,23 +660,37 @@ export default function AdminDashboardPage() {
                       className="flex-1 px-4 py-2.5 rounded-xl border border-warmgrey text-xs bg-ivory focus:bg-white focus:outline-none focus:ring-1 focus:ring-plum"
                     />
 
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleModerateProfile(p.id, "PUBLISHED")}
-                        disabled={actionLoading}
-                        className="py-2.5 px-4 rounded-xl bg-forest hover:bg-forest-800 text-ivory text-xs font-bold transition flex items-center space-x-1.5 shadow-sm"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{t("admin.approveProfile")}</span>
-                      </button>
-                      <button
-                        onClick={() => handleModerateProfile(p.id, "REJECTED")}
-                        disabled={actionLoading}
-                        className="py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-plum text-xs font-bold transition flex items-center space-x-1.5"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>{t("admin.rejectProfile")}</span>
-                      </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {p.status !== "PUBLISHED" && (
+                        <button
+                          onClick={() => handleModerateProfile(p.id, "PUBLISHED")}
+                          disabled={actionLoading}
+                          className="py-2.5 px-4 rounded-xl bg-forest hover:bg-forest-800 text-ivory text-xs font-bold transition flex items-center space-x-1.5 shadow-sm"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{t("admin.approveProfile")}</span>
+                        </button>
+                      )}
+                      {p.status !== "SUSPENDED" && (
+                        <button
+                          onClick={() => handleModerateProfile(p.id, "SUSPENDED")}
+                          disabled={actionLoading}
+                          className="py-2.5 px-4 rounded-xl bg-plum hover:bg-plum-900 text-ivory text-xs font-bold transition flex items-center space-x-1.5"
+                        >
+                          <UserX className="w-3.5 h-3.5 text-gold-300" />
+                          <span>Suspend</span>
+                        </button>
+                      )}
+                      {p.status !== "REJECTED" && (
+                        <button
+                          onClick={() => handleModerateProfile(p.id, "REJECTED")}
+                          disabled={actionLoading}
+                          className="py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-plum text-xs font-bold transition flex items-center space-x-1.5"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>{t("admin.rejectProfile")}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -506,7 +700,96 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Tab Content 3: Verification Queue */}
+      {/* Tab Content 3: Photo Moderation Queue */}
+      {activeTab === "photos" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl border border-warmgrey p-5 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-base font-bold text-plum">Member Photo Moderation</h3>
+            <div className="flex items-center gap-2">
+              {["PENDING", "APPROVED", "REJECTED", "ALL"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setPhotoStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                    photoStatusFilter === st
+                      ? "bg-plum text-ivory"
+                      : "bg-ivory text-charcoal hover:bg-plum-50 border border-warmgrey"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {photos.length === 0 ? (
+            <div className="p-12 text-center bg-white rounded-3xl border border-warmgrey text-xs text-charcoal-light">
+              No uploaded photos in this moderation filter.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {photos.map((ph) => (
+                <div key={ph.id} className="bg-white rounded-3xl border border-warmgrey p-5 space-y-4 shadow-sm flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="aspect-square rounded-2xl overflow-hidden bg-ivory border border-warmgrey flex items-center justify-center relative">
+                      {ph.has_image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/profile/photo/${ph.id}`}
+                          alt={`${ph.first_name} uploaded photo`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs text-charcoal-light">No binary image attached</span>
+                      )}
+                      <span className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full bg-white/90 text-plum text-[10px] font-bold shadow-xs">
+                        {ph.moderation_status}
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-plum text-sm">{ph.first_name}</span>
+                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-plum-50 text-plum">
+                          {ph.public_id}
+                        </span>
+                      </div>
+                      <p className="text-xs text-charcoal-light mt-0.5">
+                        {ph.city}, {ph.state} • Visibility: {ph.visibility}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-warmgrey">
+                    {ph.moderation_status !== "APPROVED" && (
+                      <button
+                        onClick={() => handleModeratePhoto(ph.id, "APPROVED")}
+                        disabled={actionLoading}
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-forest hover:bg-forest-800 text-ivory text-xs font-bold transition flex items-center justify-center space-x-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Approve</span>
+                      </button>
+                    )}
+                    {ph.moderation_status !== "REJECTED" && (
+                      <button
+                        onClick={() => handleModeratePhoto(ph.id, "REJECTED")}
+                        disabled={actionLoading}
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-plum text-xs font-bold transition flex items-center justify-center space-x-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Reject</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab Content 4: Verification Queue */}
       {activeTab === "verifications" && (
         <div className="space-y-4">
           <h3 className="text-base font-bold text-plum">
@@ -536,11 +819,22 @@ export default function AdminDashboardPage() {
                     </span>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-ivory border border-warmgrey flex items-center space-x-4 text-xs">
-                    <Camera className="w-8 h-8 text-gold" />
+                  <div className="p-4 rounded-2xl bg-ivory border border-warmgrey flex flex-col sm:flex-row items-start sm:items-center gap-4 text-xs">
+                    {v.selfie_image_data ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={v.selfie_image_data}
+                        alt={`${v.first_name} verification selfie`}
+                        className="w-28 h-28 rounded-2xl object-cover border border-warmgrey"
+                      />
+                    ) : (
+                      <Camera className="w-8 h-8 text-gold" />
+                    )}
                     <div>
-                      <span className="font-bold text-charcoal block">Selfie Storage Key:</span>
-                      <span className="font-mono text-xs text-charcoal-light">{v.selfie_storage_key || "Uploaded via secure buffer"}</span>
+                      <span className="font-bold text-charcoal block">Selfie Evidence Record:</span>
+                      <span className="font-mono text-xs text-charcoal-light break-all">
+                        {v.selfie_storage_key || "Uploaded via secure buffer"}
+                      </span>
                     </div>
                   </div>
 
@@ -578,7 +872,7 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Tab Content 4: Reports & Abuse Queue */}
+      {/* Tab Content 5: Reports & Abuse Queue */}
       {activeTab === "reports" && (
         <div className="space-y-4">
           <h3 className="text-base font-bold text-plum">

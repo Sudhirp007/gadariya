@@ -9,7 +9,11 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized: Admin session required" }, { status: 401 });
     }
 
-    const stats = await db.getAdminDashboardStats();
+    const [stats, recentAuditLogs] = await Promise.all([
+      db.getAdminDashboardStats(),
+      db.getRecentAuditLogs(20),
+    ]);
+
     return NextResponse.json({
       success: true,
       admin: {
@@ -18,6 +22,7 @@ export async function GET() {
         role: session.role,
       },
       stats,
+      recentAuditLogs,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";

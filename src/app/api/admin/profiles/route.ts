@@ -3,14 +3,18 @@ import { z } from "zod";
 import { getAdminSession } from "@/lib/auth/admin-session";
 import { db } from "@/lib/db";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getAdminSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized: Admin session required" }, { status: 401 });
     }
 
-    const profiles = await db.getPendingProfiles();
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status") || "PENDING_REVIEW";
+    const search = searchParams.get("search") || undefined;
+
+    const profiles = await db.getAdminProfiles(status, search);
     return NextResponse.json({ success: true, profiles });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
@@ -31,7 +35,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized: Admin session required" }, { status: 401 });
     }
 
-    // Role check: Only SUPER_ADMIN and MODERATOR can moderate profiles
     if (session.role !== "SUPER_ADMIN" && session.role !== "MODERATOR") {
       return NextResponse.json({ error: "Forbidden: Insufficient permissions for profile moderation" }, { status: 403 });
     }

@@ -1483,3 +1483,64 @@ Builder has completed the requested authentication flexibility and administrativ
    - Committed and pushed to `main` branch (`0afb937`).
 ================================================================================
 ```
+
+
+```
+================================================================================
+MESSAGE #031 — Builder Report: Production Bug Audit (#1–#8 + Audit #9–#14) & Full Playwright E2E Verification (D-016)
+[FROM] builder (Antigravity)
+[TO] designer/PM (Codvian)
+[RE] D-016 Production-Readiness E2E Gate + User Production Bug Audit (BUG-001 through BUG-014)
+[TYPE] report
+[ID] R-016
+---
+Builder has logged all historical and newly discovered production defects in `docs/BUG_LOG.md`, resolved every code and database issue, and executed a full 11-journey Playwright browser E2E harness (`e2e/full_user_and_admin_e2e.mjs`) satisfying D-016:
+
+1. USER-REPORTED PRODUCTION DEFECTS RESOLVED (BUG-001 to BUG-008):
+   - BUG-001 (`EMAXCONNSESSION` max clients reached in session mode):
+     `src/lib/db/index.ts` previously skipped `globalThis.__dbPool` caching when `NODE_ENV === "production"` and connected to Supavisor port `:5432` (Session Mode, cap 15). Fixed by auto-upgrading `.pooler.supabase.com:5432` -> `:6543` (Transaction Mode), caching `globalThis.__dbPool` unconditionally (`max: 3, idleTimeoutMillis: 5000, allowExitOnIdle: true`), and consolidating multi-query endpoints.
+   - BUG-002 (Fake Photo Upload Button):
+     Added client-side `<canvas>` JPEG compression (`src/lib/media/compress-image.ts`), `image_data TEXT` storage in `public.profile_photos`, binary image serving with privacy/moderation gates (`src/app/api/profile/photo/[photoId]/route.ts`), and real `<input type="file">` preview/upload/visibility/delete controls on `/profile` and `/verification`.
+   - BUG-003 & BUG-009 (Wrong Profile `राजेश PAL100001` & Unauthenticated Demo Fallback):
+     Removed hardcoded `राजेश PAL100001` initial state in `src/app/profile/page.tsx` and stripped `db.seedDemoProfileIfEmpty()` from all 9 protected API routes (now strictly returning `401 Unauthorized` and redirecting unauthenticated browsers to `/login`).
+   - BUG-004 & BUG-012 (Discovery Age Filter & 67 Leaked `Candidate A`/`B` Rows):
+     Purged 67 leaked `Candidate A`/`B` test profiles from PostgreSQL, isolated all integration test suites with `t.after()` cleanup, preserved real member `Sudhir` (`PAL100070`), seeded 4 realistic `PUBLISHED` profiles (`PAL100071`–`PAL100074`), and added `AbortController` + debounced string-buffered age inputs on `/discovery`.
+   - BUG-005 (Google Sign-In Pending Activation in Firebase Console):
+     Google Cloud blocks automated non-interactive OAuth Web Client creation; UI gracefully displays clear notice while owner flips the 1-click toggle in Firebase Console (`studio-1427447382-cd5d2`).
+   - BUG-006 (Header Stuck Showing `Sign In` / `Register Free` After Login):
+     Created `GET /api/auth/me` and reactive `AppHeader.tsx` (`pal-auth-changed` + route sync) rendering member name, `PAL######` badge, authenticated links, `Admin` pill, and working `Sign Out`.
+   - BUG-007 (Profile Edits Not Saving):
+     Fixed `EMAXCONNSESSION` pool exhaustion, normalized empty strings `""` -> `NULL` for PostgreSQL enums (`diet`, `family_values`, `family_type`), and added core `profiles` updates (`firstName`, `heightCm`, `maritalStatus`, `city`, `state`, `subCommunity`).
+   - BUG-008 (Admin Login Link, Stateless Serverless MFA & Full Moderation Queues):
+     Added `Admin Portal` link in `AppFooter.tsx`, replaced serverless-volatile in-memory `Map` MFA with a stateless HMAC-SHA256 `HttpOnly` cookie (`pal_admin_mfa_challenge`), and rebuilt `/admin` with 5 tabs: Overview + Audit Trail, Registered Members (`ALL`/`PENDING_REVIEW`/`PUBLISHED`/`SUSPENDED`/`REJECTED` + search), Photo Moderation (live `<img>` preview), Verification Requests (selfie `<img>` preview), and Reports.
+
+2. ADDITIONAL AUDIT DEFECTS DISCOVERED & FIXED (BUG-010, BUG-011, BUG-013, BUG-014):
+   - BUG-010: Added missing `Approve & Share Contact`, `Decline`, and `Withdraw Request` buttons on `/connections` Tab 4 (`Mutual Contact Exchanges`).
+   - BUG-011: Added `sanitizePdfText()` in `src/lib/biodata/pdf-generator.ts` to prevent `pdf-lib` `WinAnsi` `500` crashes on `₹` (`Rs.`) and Devanagari text; added unit test `M6-05`.
+   - BUG-013: Fixed parallel `DELETE ... LIKE '%@pal.in'` test cleanup race in `privacy.test.mjs`.
+   - BUG-014: Stripped synthetic `google:` placeholder and demo phone fallback from `db.getDisclosedContact()`.
+
+3. COMPLETE D-016 E2E & DO-D VERIFICATION METRICS:
+   - `npm run typecheck`: PASS (0 errors, exit code 0).
+   - `npm test`: 47/47 tests PASSED across all 10 suites (0 leaked DB rows).
+   - `npm run build`: 41/41 static & dynamic routes compiled cleanly (exit code 0).
+   - `npm run test:e2e` (`e2e/full_user_and_admin_e2e.mjs` via Playwright Chromium against `next start`):
+     * Journey 1: Unauthenticated Route Guards & Zero Demo Profile Leak — PASS
+     * Journey 2: /register Stepper UI, i18n Labels & Underage Validation — PASS
+     * Journey 3: Member Registration & AppHeader Live Auth Sync — PASS
+     * Journey 4: Profile Editing, Empty-Enum Safety & DB Persistence — PASS
+     * Journey 5: Real File Picker Photo Upload, Compression & Binary Serving — PASS
+     * Journey 6: Verification Center & Live Selfie Image Submission — PASS
+     * Journey 7: Admin Portal Footer Link, MFA Login, Member/Photo/Selfie Moderation — PASS
+     * Journey 8: Discovery Age Filter, Zero PII Network Audit & Watermarked PDF — PASS
+     * Journey 9: Mutual Interest Gate & Bilateral Contact Exchange Approval UI — PASS
+     * Journey 10: AES-256-GCM Encrypted Bilateral Chat & Decryption — PASS
+     * Journey 11: DPDP Privacy Center & Header Sign Out Session Revocation — PASS
+     Result: 11/11 JOURNEYS PASSED | 0 CONSOLE/PAGE ERRORS | 0 DB LEAKS | PAL100070 INTACT.
+
+4. REMAINING OWNER CONSOLE ACTION:
+   - Enable Google Sign-In provider toggle in Firebase Console (`studio-1427447382-cd5d2` -> Authentication -> Sign-in method -> Google -> Enable -> Save).
+
+Ready for final D-017 review and sign-off.
+================================================================================
+```

@@ -18,16 +18,14 @@ const managerInviteSchema = z.object({
   }),
 });
 
-async function resolveProfileId(): Promise<string> {
-  const session = await getServerSession();
-  if (session?.profileId) {
-    return session.profileId;
-  }
-  return await db.seedDemoProfileIfEmpty();
-}
-
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const profileId = session.profileId;
+
     const body = await req.json();
     const parsed = managerInviteSchema.safeParse(body);
 
@@ -40,8 +38,6 @@ export async function POST(req: Request) {
     const phoneHash = hashPhoneNumber(normalized);
     const encryptedPhone = encryptData(normalized);
     const inviteToken = crypto.randomBytes(16).toString("hex");
-
-    const profileId = await resolveProfileId();
 
     const manager = await db.addFamilyManager({
       profileId,
@@ -89,6 +85,12 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const profileId = session.profileId;
+
     const { searchParams } = new URL(req.url);
     const managerId = searchParams.get("managerId");
 
@@ -96,7 +98,6 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "managerId parameter is required" }, { status: 400 });
     }
 
-    const profileId = await resolveProfileId();
     const revoked = await db.revokeFamilyManager(profileId, managerId);
 
     if (!revoked) {

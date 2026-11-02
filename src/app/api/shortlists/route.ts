@@ -3,16 +3,13 @@ import { z } from "zod";
 import { getServerSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 
-async function resolveProfileId(): Promise<string> {
-  const session = await getServerSession();
-  if (session?.profileId) return session.profileId;
-  return await db.seedDemoProfileIfEmpty();
-}
-
 export async function GET() {
   try {
-    const profileId = await resolveProfileId();
-    const shortlists = await db.getShortlistsForProfile(profileId);
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const shortlists = await db.getShortlistsForProfile(session.profileId);
     return NextResponse.json({ success: true, shortlists });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
@@ -26,7 +23,10 @@ const shortlistSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const profileId = await resolveProfileId();
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
     const body = await req.json();
     const parsed = shortlistSchema.safeParse(body);
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     }
 
     const { targetProfileId } = parsed.data;
-    const result = await db.toggleShortlist(profileId, targetProfileId);
+    const result = await db.toggleShortlist(session.profileId, targetProfileId);
 
     return NextResponse.json({
       success: true,

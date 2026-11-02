@@ -3,19 +3,17 @@ import { getServerSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ requestId: string }> }
 ) {
   try {
     const { requestId } = await params;
     const session = await getServerSession();
-    let profileId = session?.profileId;
-
-    if (!profileId) {
-      profileId = await db.seedDemoProfileIfEmpty();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
-    const disclosed = await db.getDisclosedContact(requestId, profileId);
+    const disclosed = await db.getDisclosedContact(requestId, session.profileId);
 
     return NextResponse.json({
       success: true,

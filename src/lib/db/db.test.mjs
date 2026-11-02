@@ -4,14 +4,21 @@ import fs from "node:fs";
 import pg from "pg";
 const { Client } = pg;
 
+function normalizePoolerUrl(raw) {
+  if (!raw) return raw;
+  return raw.includes(".pooler.supabase.com:5432")
+    ? raw.replace(".pooler.supabase.com:5432", ".pooler.supabase.com:6543")
+    : raw;
+}
+
 function getConnectionString() {
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  if (process.env.DATABASE_URL) return normalizePoolerUrl(process.env.DATABASE_URL);
   try {
     if (fs.existsSync(".env.local")) {
       const lines = fs.readFileSync(".env.local", "utf-8").split("\n");
       for (const line of lines) {
         if (line.startsWith("DATABASE_URL=")) {
-          return line.slice("DATABASE_URL=".length).trim();
+          return normalizePoolerUrl(line.slice("DATABASE_URL=".length).trim());
         }
       }
     }
@@ -30,6 +37,15 @@ test("Database Integration Suite", async (t) => {
   });
 
   await client.connect();
+
+  t.after(async () => {
+    try {
+      await client.query(`DELETE FROM public.profile_managers WHERE manager_phone_hash = 'test_hash_brother_999';`);
+    } catch {
+      // ignore cleanup error
+    }
+    await client.end();
+  });
 
   await t.test("Schema Verification: All core tables and views exist", async () => {
     const res = await client.query(`
@@ -104,12 +120,10 @@ test("Database Integration Suite", async (t) => {
   });
 
   await t.test("Privacy Invariant C-06: Database strictly prohibits managers from disclosing contact", async () => {
-    // 1. Verify existing demo profile
     const pRes = await client.query(`SELECT id FROM public.profiles LIMIT 1;`);
     assert.ok(pRes.rows.length > 0, "A profile must exist for testing");
     const testProfileId = pRes.rows[0].id;
 
-    // 2. Insert valid manager
     const insertRes = await client.query(
       `INSERT INTO public.profile_managers (
         profile_id, relation, manager_phone_hash, can_disclose_contact, can_view_verification_docs
@@ -121,7 +135,6 @@ test("Database Integration Suite", async (t) => {
     assert.strictEqual(insertRes.rows[0].can_disclose_contact, false);
     assert.strictEqual(insertRes.rows[0].can_view_verification_docs, false);
 
-    // 3. Attempt to illegally set can_disclose_contact = TRUE must be rejected by check constraint
     let constraintViolated = false;
     try {
       await client.query(
@@ -130,7 +143,7 @@ test("Database Integration Suite", async (t) => {
         ) VALUES ($1, 'BROTHER', 'illegal_hash_attempt', TRUE);`,
         [testProfileId]
       );
-    } catch (err) {
+    } catch {
       constraintViolated = true;
     }
     assert.strictEqual(
@@ -142,11 +155,8 @@ test("Database Integration Suite", async (t) => {
 
   await t.test("Contact Disclosures View: Hides contact until BOTH_APPROVED", async () => {
     const res = await client.query(`SELECT * FROM public.contact_disclosures;`);
-    // All rows in contact_disclosures MUST have status = 'BOTH_APPROVED'
     for (const row of res.rows) {
       assert.strictEqual(row.status, "BOTH_APPROVED");
     }
   });
-
-  await client.end();
 });

@@ -171,6 +171,7 @@
     "rule2": "No details revealed without prior bilateral mutual consent",
     "rule3": "Watermarked biodata PDF downloads with recipient ID tracking",
     "rule4": "Complete audit trail in compliance with India's DPDP Act 2025",
+    "adminPortal": "Admin Portal",
     "copyright": "© 2026 Pal Matrimony (gadariya.org). All rights reserved."
   },
   "admin": {
@@ -181,6 +182,8 @@
     "verifyMfaButton": "Verify & Enter Admin Console",
     "tabOverview": "Dashboard Overview",
     "tabProfiles": "Profile Review Queue",
+    "tabAllMembers": "Registered Members",
+    "tabPhotos": "Photo Moderation",
     "tabVerifications": "Verification Requests",
     "tabReports": "Reports & Moderation",
     "statPendingProfiles": "Pending Profiles",

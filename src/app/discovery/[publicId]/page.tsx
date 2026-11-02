@@ -8,9 +8,7 @@ import { VerificationBadges } from "@/components/VerificationBadges";
 import {
   ArrowLeft,
   GraduationCap,
-  Briefcase,
   Users,
-  Sliders,
   Shield,
   Phone,
   Lock,
@@ -18,10 +16,10 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Sparkles,
   Download,
   FileText,
   Eye,
+  MessageCircle,
 } from "lucide-react";
 
 export default function CandidateDetailPage() {
@@ -32,6 +30,7 @@ export default function CandidateDetailPage() {
 
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [interestSent, setInterestSent] = useState(false);
   const [contactRequested, setContactRequested] = useState(false);
   const [biodataRequested, setBiodataRequested] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
@@ -41,10 +40,13 @@ export default function CandidateDetailPage() {
   useEffect(() => {
     async function loadDetail() {
       try {
-        const res = await fetch(`/api/discovery/${publicId}`);
+        const res = await fetch(`/api/discovery/${publicId}`, { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
           setProfile(data.profile);
+          if (data.profile?.relationshipState?.interest) {
+            setInterestSent(true);
+          }
           if (data.profile?.relationshipState?.contactExchange) {
             setContactRequested(true);
           }
@@ -61,12 +63,42 @@ export default function CandidateDetailPage() {
     if (publicId) loadDetail();
   }, [publicId]);
 
+  const handleSendInterest = async () => {
+    if (!profile) return;
+    setRequestLoading(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/interests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetProfileId: profile.id, action: "SEND" }),
+      });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send interest");
+      setInterestSent(true);
+      setMsg({ type: "success", text: "Interest sent respectfully!" });
+    } catch (err: unknown) {
+      const errorText = err instanceof Error ? err.message : "Error sending interest";
+      setMsg({ type: "error", text: errorText });
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
   const handleDownloadPdf = async () => {
     if (!profile) return;
     setDownloadingPdf(true);
     setMsg(null);
     try {
       const res = await fetch(`/api/biodata/${profile.publicId}/pdf`);
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || "Failed to download biodata PDF");
@@ -99,6 +131,10 @@ export default function CandidateDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetPublicId: profile.publicId }),
       });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to request access");
       setBiodataRequested(true);
@@ -126,7 +162,10 @@ export default function CandidateDetailPage() {
           discloseEmail: false,
         }),
       });
-
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to initiate request");
 
@@ -168,11 +207,13 @@ export default function CandidateDetailPage() {
 
   const exchangeState = profile.relationshipState?.contactExchange;
   const isBothApproved = exchangeState?.status === "BOTH_APPROVED";
+  const isInterestAccepted = profile.relationshipState?.interest?.status === "ACCEPTED";
+  const hasPhotoShareAccess = profile.relationshipState?.biodataShare?.status === "APPROVED";
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
       {/* Top Action Bar */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/discovery"
           className="inline-flex items-center space-x-2 text-xs font-bold text-plum hover:text-plum-900 transition"
@@ -181,16 +222,42 @@ export default function CandidateDetailPage() {
           <span>Back to Matches</span>
         </Link>
 
-        {/* Download Watermarked Biodata PDF Button */}
-        <button
-          onClick={handleDownloadPdf}
-          disabled={downloadingPdf}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gold-600 hover:bg-gold-700 text-ivory text-xs font-bold shadow-sm transition"
-        >
-          <FileText className="w-3.5 h-3.5 text-ivory" />
-          <span>{downloadingPdf ? "Generating PDF..." : "Download Biodata (PDF)"}</span>
-          <Download className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isInterestAccepted ? (
+            <Link
+              href={`/messages/${profile.publicId}`}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-forest hover:bg-forest-800 text-ivory text-xs font-bold shadow-sm transition"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>Open Encrypted Chat</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSendInterest}
+              disabled={interestSent || requestLoading}
+              className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition ${
+                interestSent
+                  ? "bg-forest-50 border border-forest-200 text-forest"
+                  : "bg-plum hover:bg-plum-900 text-ivory"
+              }`}
+            >
+              <Heart className="w-3.5 h-3.5 text-gold-300" />
+              <span>{interestSent ? t("discovery.interestSent") : t("discovery.sendInterest")}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gold-600 hover:bg-gold-700 text-ivory text-xs font-bold shadow-sm transition"
+          >
+            <FileText className="w-3.5 h-3.5 text-ivory" />
+            <span>{downloadingPdf ? "Generating PDF..." : "Download Biodata (PDF)"}</span>
+            <Download className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Hero Profile Card */}
@@ -234,6 +301,32 @@ export default function CandidateDetailPage() {
           </div>
         )}
 
+        {/* Approved Candidate Photos Gallery (if any) */}
+        {profile.photos && profile.photos.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {profile.photos.map((ph: any, idx: number) => {
+              const canViewClear = ph.hasImage && (ph.visibility === "PUBLIC_TO_MEMBERS" || hasPhotoShareAccess);
+              const canViewBlur = ph.hasImage && ph.visibility === "BLURRED" && !hasPhotoShareAccess;
+              return (
+                <div key={ph.id} className="h-36 rounded-2xl border border-warmgrey bg-ivory overflow-hidden flex items-center justify-center relative">
+                  {canViewClear ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/api/profile/photo/${ph.id}`} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                  ) : canViewBlur ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/api/profile/photo/${ph.id}`} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover blur-md scale-110" />
+                  ) : (
+                    <div className="text-center p-2">
+                      <Lock className="w-5 h-5 text-plum mx-auto" />
+                      <span className="text-[10px] text-charcoal-light font-semibold block mt-1">Consent Gated</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Photo & Biodata Privacy Gate */}
         <div className="p-4 rounded-2xl bg-ivory border border-warmgrey flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
@@ -245,7 +338,7 @@ export default function CandidateDetailPage() {
                 Photo & Private Biodata Privacy Gate
               </span>
               <p className="text-[11px] text-charcoal-light">
-                {profile.relationshipState?.biodataShare?.status === "APPROVED"
+                {hasPhotoShareAccess
                   ? "Access granted: You are authorized to view full candidate photos and biodata."
                   : "Candidate photos require explicit owner permission to safeguard family privacy."}
               </p>
@@ -253,7 +346,7 @@ export default function CandidateDetailPage() {
           </div>
 
           <div>
-            {profile.relationshipState?.biodataShare?.status === "APPROVED" ? (
+            {hasPhotoShareAccess ? (
               <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-forest-50 border border-forest-200 text-forest text-xs font-bold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Access Granted</span>
@@ -265,6 +358,7 @@ export default function CandidateDetailPage() {
               </span>
             ) : (
               <button
+                type="button"
                 onClick={handleRequestBiodataShare}
                 disabled={requestLoading}
                 className="px-4 py-2 rounded-xl bg-plum hover:bg-plum-900 text-ivory text-xs font-bold shadow-sm transition flex items-center space-x-1.5"
@@ -369,14 +463,20 @@ export default function CandidateDetailPage() {
               </Link>
             </div>
           ) : contactRequested ? (
-            <div className="p-4 rounded-xl bg-ivory border border-warmgrey text-xs flex items-center space-x-2 text-charcoal">
-              <Clock className="w-4 h-4 text-gold-600 flex-shrink-0" />
-              <span>
-                Contact exchange requested. Awaiting mutual approval from {profile.firstName}.
-              </span>
+            <div className="p-4 rounded-xl bg-ivory border border-warmgrey text-xs flex items-center justify-between gap-3 text-charcoal">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-4 h-4 text-gold-600 flex-shrink-0" />
+                <span>
+                  Contact exchange active. Visit Connections to manage or approve mutual contact sharing.
+                </span>
+              </div>
+              <Link href="/connections" className="px-3 py-1.5 rounded-lg bg-plum text-ivory font-bold text-xs whitespace-nowrap">
+                Connections
+              </Link>
             </div>
           ) : (
             <button
+              type="button"
               onClick={handleRequestContact}
               disabled={requestLoading}
               className="w-full sm:w-auto py-3 px-6 rounded-xl bg-plum hover:bg-plum-900 text-ivory font-bold text-xs shadow-md transition flex items-center justify-center space-x-2"

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import {
   Shield,
@@ -19,6 +20,7 @@ import {
 
 export default function PrivacySettingsPage() {
   const { t } = useTranslation();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<"shares" | "consent" | "deletion">("shares");
   const [loading, setLoading] = useState(true);
@@ -34,13 +36,18 @@ export default function PrivacySettingsPage() {
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [sharesRes, consentRes] = await Promise.all([
-        fetch("/api/biodata-shares"),
-        fetch("/api/privacy/consent"),
+        fetch("/api/biodata-shares", { cache: "no-store" }),
+        fetch("/api/privacy/consent", { cache: "no-store" }),
       ]);
+
+      if (sharesRes.status === 401 || consentRes.status === 401) {
+        router.push("/login");
+        return;
+      }
 
       if (sharesRes.ok) {
         const data = await sharesRes.json();
@@ -56,11 +63,11 @@ export default function PrivacySettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleRespondShare = async (shareId: string, action: "APPROVE" | "DECLINE" | "REVOKE") => {
     setActionLoading(true);

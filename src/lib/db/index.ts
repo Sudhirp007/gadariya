@@ -3,20 +3,30 @@ import fs from "fs";
 import { encryptData, decryptData } from "../crypto/index.ts";
 const { Pool } = pg;
 
-// Global singleton pool across hot reloads in Next.js development
+// Global singleton pool across hot reloads AND serverless warm invocations
 declare global {
   // eslint-disable-next-line no-var
   var __dbPool: pg.Pool | undefined;
 }
 
+function normalizeConnectionString(raw: string): string {
+  const cleaned = raw.trim().replace(/^["']|["']$/g, "");
+  // Automatically switch Supabase Supavisor Session Mode (:5432, max 15 clients)
+  // to Transaction Mode (:6543) to prevent EMAXCONNSESSION in serverless environments.
+  if (cleaned.includes(".pooler.supabase.com:5432")) {
+    return cleaned.replace(".pooler.supabase.com:5432", ".pooler.supabase.com:6543");
+  }
+  return cleaned;
+}
+
 function getConnectionString(): string {
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  if (process.env.DATABASE_URL) return normalizeConnectionString(process.env.DATABASE_URL);
   try {
     if (fs.existsSync(".env.local")) {
       const lines = fs.readFileSync(".env.local", "utf-8").split("\n");
       for (const line of lines) {
         if (line.startsWith("DATABASE_URL=")) {
-          return line.slice("DATABASE_URL=".length).trim();
+          return normalizeConnectionString(line.slice("DATABASE_URL=".length));
         }
       }
     }
@@ -27,8 +37,8 @@ function getConnectionString(): string {
 }
 
 function getPool(): pg.Pool {
-  if (global.__dbPool) {
-    return global.__dbPool;
+  if (globalThis.__dbPool) {
+    return globalThis.__dbPool;
   }
 
   const connectionString = getConnectionString();
@@ -36,23 +46,28 @@ function getPool(): pg.Pool {
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 10,
-    idleTimeoutMillis: 30000,
+    max: 3,
+    idleTimeoutMillis: 5000,
     connectionTimeoutMillis: 10000,
+    allowExitOnIdle: true,
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    global.__dbPool = pool;
-  }
+  pool.on("error", (err) => {
+    console.error("[DB Pool Idle Client Error]", err.message);
+  });
+
+  // Always cache globally (including in production!) so a single request or warm
+  // serverless lambda never spawns multiple pg.Pool instances.
+  globalThis.__dbPool = pool;
 
   return pool;
 }
 
 export const db = {
   async endPool() {
-    if (global.__dbPool) {
-      await global.__dbPool.end();
-      global.__dbPool = undefined;
+    if (globalThis.__dbPool) {
+      await globalThis.__dbPool.end();
+      globalThis.__dbPool = undefined;
     }
   },
 
@@ -129,83 +144,94 @@ export const db = {
   },
 
   async getFullProfile(profileId: string) {
-    const pRes = await this.query(
-      `SELECT * FROM public.profiles WHERE id = $1 LIMIT 1;`,
+    const joinedRes = await this.query(
+      `SELECT 
+         p.*,
+         pd.highest_education, pd.education_detail, pd.employed_in, pd.occupation,
+         pd.annual_income_range, pd.mother_tongue, pd.diet, pd.about_me,
+         fd.father_occupation, fd.mother_occupation, fd.brothers_count, fd.sisters_count,
+         fd.family_type, fd.family_values, fd.family_location, fd.about_family,
+         pp.min_age, pp.max_age, pp.min_height_cm, pp.max_height_cm,
+         pp.marital_status_allowed, pp.preferred_states, pp.preferred_cities
+       FROM public.profiles p
+       LEFT JOIN public.profile_details pd ON p.id = pd.profile_id
+       LEFT JOIN public.family_details fd ON p.id = fd.profile_id
+       LEFT JOIN public.profile_preferences pp ON p.id = pp.profile_id
+       WHERE p.id = $1
+       LIMIT 1;`,
       [profileId]
     );
-    const profile = pRes.rows[0];
-    if (!profile) return null;
+    const row = joinedRes.rows[0];
+    if (!row) return null;
 
-    const [detailsRes, familyRes, prefsRes, photosRes, managersRes] = await Promise.all([
-      this.query(`SELECT * FROM public.profile_details WHERE profile_id = $1;`, [profileId]),
-      this.query(`SELECT * FROM public.family_details WHERE profile_id = $1;`, [profileId]),
-      this.query(`SELECT * FROM public.profile_preferences WHERE profile_id = $1;`, [profileId]),
+    const [photosRes, managersRes] = await Promise.all([
       this.query(
-        `SELECT id, storage_key, visibility, moderation_status, is_primary 
-         FROM public.profile_photos WHERE profile_id = $1 ORDER BY created_at DESC;`,
+        `SELECT id, storage_key, visibility, moderation_status, is_primary,
+                (image_data IS NOT NULL AND length(image_data) > 0) as has_image
+         FROM public.profile_photos
+         WHERE profile_id = $1
+         ORDER BY is_primary DESC, created_at DESC;`,
         [profileId]
       ),
       this.query(
         `SELECT id, relation, status, can_edit_biodata, can_manage_preferences,
                 can_send_interests, can_view_shortlists, can_disclose_contact, can_view_verification_docs,
                 manager_phone_hash, created_at
-         FROM public.profile_managers WHERE profile_id = $1 AND status <> 'REVOKED';`,
+         FROM public.profile_managers
+         WHERE profile_id = $1 AND status <> 'REVOKED'
+         ORDER BY created_at DESC;`,
         [profileId]
       ),
     ]);
 
-    const details = detailsRes.rows[0] || {};
-    const family = familyRes.rows[0] || {};
-    const prefs = prefsRes.rows[0] || {};
-
     const age = Math.floor(
-      (new Date().getTime() - new Date(profile.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+      (new Date().getTime() - new Date(row.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
     );
 
     return {
-      id: profile.id,
-      publicId: profile.public_id,
-      userId: profile.owner_user_id,
-      managedBy: profile.managed_by,
-      firstName: profile.first_name,
-      gender: profile.gender,
-      dob: profile.dob instanceof Date ? profile.dob.toISOString().split("T")[0] : profile.dob,
+      id: row.id,
+      publicId: row.public_id,
+      userId: row.owner_user_id,
+      managedBy: row.managed_by,
+      firstName: row.first_name ?? "",
+      gender: row.gender,
+      dob: row.dob instanceof Date ? row.dob.toISOString().split("T")[0] : row.dob,
       age,
-      heightCm: profile.height_cm,
-      maritalStatus: profile.marital_status,
-      country: profile.country,
-      state: profile.state,
-      city: profile.city,
-      subCommunity: profile.sub_community,
-      publicationStatus: profile.publication_status,
-      isDiscoverable: profile.is_discoverable,
-      completionScore: profile.completion_score,
-      // Details
-      highestEducation: details.highest_education,
-      educationDetail: details.education_detail,
-      employedIn: details.employed_in,
-      occupation: details.occupation,
-      annualIncomeRange: details.annual_income_range,
-      motherTongue: details.mother_tongue || "Hindi",
-      diet: details.diet,
-      aboutMe: details.about_me,
+      heightCm: row.height_cm ?? null,
+      maritalStatus: row.marital_status ?? "NEVER_MARRIED",
+      country: row.country ?? "India",
+      state: row.state ?? "",
+      city: row.city ?? "",
+      subCommunity: row.sub_community ?? "",
+      publicationStatus: row.publication_status,
+      isDiscoverable: row.is_discoverable ?? true,
+      completionScore: row.completion_score ?? 20,
+      // Details (normalized to empty string instead of undefined/null for safe UI state)
+      highestEducation: row.highest_education ?? "",
+      educationDetail: row.education_detail ?? "",
+      employedIn: row.employed_in ?? "",
+      occupation: row.occupation ?? "",
+      annualIncomeRange: row.annual_income_range ?? "",
+      motherTongue: row.mother_tongue || "Hindi",
+      diet: row.diet ?? "",
+      aboutMe: row.about_me ?? "",
       // Family
-      fatherOccupation: family.father_occupation,
-      motherOccupation: family.mother_occupation,
-      brothersCount: family.brothers_count || 0,
-      sistersCount: family.sisters_count || 0,
-      familyType: family.family_type,
-      familyValues: family.family_values,
-      familyLocation: family.family_location,
-      aboutFamily: family.about_family,
+      fatherOccupation: row.father_occupation ?? "",
+      motherOccupation: row.mother_occupation ?? "",
+      brothersCount: row.brothers_count ?? 0,
+      sistersCount: row.sisters_count ?? 0,
+      familyType: row.family_type ?? "",
+      familyValues: row.family_values ?? "",
+      familyLocation: row.family_location ?? "",
+      aboutFamily: row.about_family ?? "",
       // Preferences
-      prefMinAge: prefs.min_age || 18,
-      prefMaxAge: prefs.max_age || 70,
-      prefMinHeightCm: prefs.min_height_cm || 120,
-      prefMaxHeightCm: prefs.max_height_cm || 220,
-      prefMaritalStatus: prefs.marital_status_allowed || ["NEVER_MARRIED"],
-      prefStates: prefs.preferred_states || [],
-      prefCities: prefs.preferred_cities || [],
+      prefMinAge: row.min_age ?? 18,
+      prefMaxAge: row.max_age ?? 70,
+      prefMinHeightCm: row.min_height_cm ?? 120,
+      prefMaxHeightCm: row.max_height_cm ?? 220,
+      prefMaritalStatus: row.marital_status_allowed || ["NEVER_MARRIED"],
+      prefStates: row.preferred_states || [],
+      prefCities: row.preferred_cities || [],
       // Photos
       photos: photosRes.rows.map((r) => ({
         id: r.id,
@@ -213,6 +239,7 @@ export const db = {
         visibility: r.visibility,
         moderationStatus: r.moderation_status,
         isPrimary: r.is_primary,
+        hasImage: !!r.has_image,
       })),
       // Managers
       managers: managersRes.rows.map((r) => ({
@@ -235,27 +262,34 @@ export const db = {
   async updateFullProfile(
     profileId: string,
     updates: {
+      firstName?: string;
+      heightCm?: number | null;
+      maritalStatus?: string;
+      state?: string;
+      city?: string;
+      subCommunity?: string | null;
+      isDiscoverable?: boolean;
       completionScore?: number;
       publicationStatus?: string;
       details?: {
-        highestEducation?: string;
-        educationDetail?: string;
-        employedIn?: string;
-        occupation?: string;
-        annualIncomeRange?: string;
-        motherTongue?: string;
-        diet?: string;
-        aboutMe?: string;
+        highestEducation?: string | null;
+        educationDetail?: string | null;
+        employedIn?: string | null;
+        occupation?: string | null;
+        annualIncomeRange?: string | null;
+        motherTongue?: string | null;
+        diet?: string | null;
+        aboutMe?: string | null;
       };
       family?: {
-        fatherOccupation?: string;
-        motherOccupation?: string;
+        fatherOccupation?: string | null;
+        motherOccupation?: string | null;
         brothersCount?: number;
         sistersCount?: number;
-        familyType?: string;
-        familyValues?: string;
-        familyLocation?: string;
-        aboutFamily?: string;
+        familyType?: string | null;
+        familyValues?: string | null;
+        familyLocation?: string | null;
+        aboutFamily?: string | null;
       };
       preferences?: {
         minAge?: number;
@@ -268,81 +302,136 @@ export const db = {
       };
     }
   ) {
-    if (updates.completionScore !== undefined || updates.publicationStatus !== undefined) {
+    if (
+      updates.firstName !== undefined ||
+      updates.heightCm !== undefined ||
+      updates.maritalStatus !== undefined ||
+      updates.state !== undefined ||
+      updates.city !== undefined ||
+      updates.subCommunity !== undefined ||
+      updates.isDiscoverable !== undefined ||
+      updates.completionScore !== undefined ||
+      updates.publicationStatus !== undefined
+    ) {
       await this.query(
         `UPDATE public.profiles 
-         SET completion_score = COALESCE($2, completion_score),
-             publication_status = COALESCE($3, publication_status),
+         SET first_name = COALESCE($2, first_name),
+             height_cm = CASE WHEN $3::boolean THEN $4 ELSE height_cm END,
+             marital_status = COALESCE($5, marital_status),
+             state = COALESCE($6, state),
+             city = COALESCE($7, city),
+             sub_community = CASE WHEN $8::boolean THEN $9 ELSE sub_community END,
+             is_discoverable = COALESCE($10, is_discoverable),
+             completion_score = COALESCE($11, completion_score),
+             publication_status = COALESCE($12, publication_status),
              updated_at = NOW()
          WHERE id = $1;`,
-        [profileId, updates.completionScore, updates.publicationStatus]
+        [
+          profileId,
+          updates.firstName?.trim() || null,
+          updates.heightCm !== undefined,
+          updates.heightCm ?? null,
+          updates.maritalStatus || null,
+          updates.state?.trim() || null,
+          updates.city?.trim() || null,
+          updates.subCommunity !== undefined,
+          updates.subCommunity?.trim() || null,
+          updates.isDiscoverable ?? null,
+          updates.completionScore ?? null,
+          updates.publicationStatus || null,
+        ]
       );
     }
 
     if (updates.details) {
       const d = updates.details;
+      const validEmployed = ["PRIVATE", "GOVERNMENT", "BUSINESS", "DEFENCE", "NOT_WORKING", "OTHER"];
+      const validDiet = ["VEGETARIAN", "NON_VEGETARIAN", "EGGETARIAN", "JAIN"];
+      const normEmployed = d.employedIn && validEmployed.includes(d.employedIn) ? d.employedIn : null;
+      const normDiet = d.diet && validDiet.includes(d.diet) ? d.diet : null;
+
       await this.query(
         `INSERT INTO public.profile_details (
           profile_id, highest_education, education_detail, employed_in, occupation,
           annual_income_range, mother_tongue, diet, about_me, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         ON CONFLICT (profile_id) DO UPDATE SET
-          highest_education = COALESCE(EXCLUDED.highest_education, public.profile_details.highest_education),
-          education_detail = COALESCE(EXCLUDED.education_detail, public.profile_details.education_detail),
-          employed_in = COALESCE(EXCLUDED.employed_in, public.profile_details.employed_in),
-          occupation = COALESCE(EXCLUDED.occupation, public.profile_details.occupation),
-          annual_income_range = COALESCE(EXCLUDED.annual_income_range, public.profile_details.annual_income_range),
+          highest_education = CASE WHEN $10::boolean THEN EXCLUDED.highest_education ELSE public.profile_details.highest_education END,
+          education_detail = CASE WHEN $11::boolean THEN EXCLUDED.education_detail ELSE public.profile_details.education_detail END,
+          employed_in = CASE WHEN $12::boolean THEN EXCLUDED.employed_in ELSE public.profile_details.employed_in END,
+          occupation = CASE WHEN $13::boolean THEN EXCLUDED.occupation ELSE public.profile_details.occupation END,
+          annual_income_range = CASE WHEN $14::boolean THEN EXCLUDED.annual_income_range ELSE public.profile_details.annual_income_range END,
           mother_tongue = COALESCE(EXCLUDED.mother_tongue, public.profile_details.mother_tongue),
-          diet = COALESCE(EXCLUDED.diet, public.profile_details.diet),
-          about_me = COALESCE(EXCLUDED.about_me, public.profile_details.about_me),
+          diet = CASE WHEN $15::boolean THEN EXCLUDED.diet ELSE public.profile_details.diet END,
+          about_me = CASE WHEN $16::boolean THEN EXCLUDED.about_me ELSE public.profile_details.about_me END,
           updated_at = NOW();`,
         [
           profileId,
-          d.highestEducation || null,
-          d.educationDetail || null,
-          d.employedIn || null,
-          d.occupation || null,
-          d.annualIncomeRange || null,
-          d.motherTongue || "Hindi",
-          d.diet || null,
-          d.aboutMe || null,
+          d.highestEducation?.trim() || null,
+          d.educationDetail?.trim() || null,
+          normEmployed,
+          d.occupation?.trim() || null,
+          d.annualIncomeRange?.trim() || null,
+          d.motherTongue?.trim() || "Hindi",
+          normDiet,
+          d.aboutMe?.trim() || null,
+          d.highestEducation !== undefined,
+          d.educationDetail !== undefined,
+          d.employedIn !== undefined,
+          d.occupation !== undefined,
+          d.annualIncomeRange !== undefined,
+          d.diet !== undefined,
+          d.aboutMe !== undefined,
         ]
       );
     }
 
     if (updates.family) {
       const f = updates.family;
+      const validFamilyType = ["NUCLEAR", "JOINT"];
+      const validFamilyValues = ["TRADITIONAL", "MODERATE", "LIBERAL"];
+      const normFamilyType = f.familyType && validFamilyType.includes(f.familyType) ? f.familyType : null;
+      const normFamilyValues = f.familyValues && validFamilyValues.includes(f.familyValues) ? f.familyValues : null;
+
       await this.query(
         `INSERT INTO public.family_details (
           profile_id, father_occupation, mother_occupation, brothers_count, sisters_count,
           family_type, family_values, family_location, about_family, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         ON CONFLICT (profile_id) DO UPDATE SET
-          father_occupation = COALESCE(EXCLUDED.father_occupation, public.family_details.father_occupation),
-          mother_occupation = COALESCE(EXCLUDED.mother_occupation, public.family_details.mother_occupation),
+          father_occupation = CASE WHEN $10::boolean THEN EXCLUDED.father_occupation ELSE public.family_details.father_occupation END,
+          mother_occupation = CASE WHEN $11::boolean THEN EXCLUDED.mother_occupation ELSE public.family_details.mother_occupation END,
           brothers_count = COALESCE(EXCLUDED.brothers_count, public.family_details.brothers_count),
           sisters_count = COALESCE(EXCLUDED.sisters_count, public.family_details.sisters_count),
-          family_type = COALESCE(EXCLUDED.family_type, public.family_details.family_type),
-          family_values = COALESCE(EXCLUDED.family_values, public.family_details.family_values),
-          family_location = COALESCE(EXCLUDED.family_location, public.family_details.family_location),
-          about_family = COALESCE(EXCLUDED.about_family, public.family_details.about_family),
+          family_type = CASE WHEN $12::boolean THEN EXCLUDED.family_type ELSE public.family_details.family_type END,
+          family_values = CASE WHEN $13::boolean THEN EXCLUDED.family_values ELSE public.family_details.family_values END,
+          family_location = CASE WHEN $14::boolean THEN EXCLUDED.family_location ELSE public.family_details.family_location END,
+          about_family = CASE WHEN $15::boolean THEN EXCLUDED.about_family ELSE public.family_details.about_family END,
           updated_at = NOW();`,
         [
           profileId,
-          f.fatherOccupation || null,
-          f.motherOccupation || null,
+          f.fatherOccupation?.trim() || null,
+          f.motherOccupation?.trim() || null,
           f.brothersCount ?? 0,
           f.sistersCount ?? 0,
-          f.familyType || null,
-          f.familyValues || null,
-          f.familyLocation || null,
-          f.aboutFamily || null,
+          normFamilyType,
+          normFamilyValues,
+          f.familyLocation?.trim() || null,
+          f.aboutFamily?.trim() || null,
+          f.fatherOccupation !== undefined,
+          f.motherOccupation !== undefined,
+          f.familyType !== undefined,
+          f.familyValues !== undefined,
+          f.familyLocation !== undefined,
+          f.aboutFamily !== undefined,
         ]
       );
     }
 
     if (updates.preferences) {
       const p = updates.preferences;
+      const safeMinAge = Math.max(18, p.minAge || 18);
+      const safeMaxAge = Math.max(safeMinAge, p.maxAge || 70);
       await this.query(
         `INSERT INTO public.profile_preferences (
           profile_id, min_age, max_age, min_height_cm, max_height_cm,
@@ -359,11 +448,11 @@ export const db = {
           updated_at = NOW();`,
         [
           profileId,
-          p.minAge || 18,
-          p.maxAge || 70,
+          safeMinAge,
+          safeMaxAge,
           p.minHeightCm || 120,
           p.maxHeightCm || 220,
-          p.maritalStatusAllowed || ["NEVER_MARRIED"],
+          p.maritalStatusAllowed && p.maritalStatusAllowed.length > 0 ? p.maritalStatusAllowed : ["NEVER_MARRIED"],
           p.preferredStates || [],
           p.preferredCities || [],
         ]
@@ -381,15 +470,118 @@ export const db = {
     storageKey: string;
     visibility: "PUBLIC_TO_MEMBERS" | "BLURRED" | "APPROVAL_REQUIRED";
     isPrimary?: boolean;
+    imageData?: string;
   }) {
+    const existingCountRes = await this.query(
+      `SELECT COUNT(*)::int as count FROM public.profile_photos WHERE profile_id = $1;`,
+      [data.profileId]
+    );
+    const shouldBePrimary = data.isPrimary ?? (existingCountRes.rows[0]?.count === 0);
+
+    if (shouldBePrimary) {
+      await this.query(
+        `UPDATE public.profile_photos SET is_primary = FALSE WHERE profile_id = $1;`,
+        [data.profileId]
+      );
+    }
+
     const res = await this.query(
       `INSERT INTO public.profile_photos (
-        profile_id, storage_key, visibility, moderation_status, is_primary
-      ) VALUES ($1, $2, $3, 'PENDING', $4)
-      RETURNING *;`,
-      [data.profileId, data.storageKey, data.visibility, data.isPrimary ?? false]
+        profile_id, storage_key, visibility, moderation_status, is_primary, image_data
+      ) VALUES ($1, $2, $3, 'PENDING', $4, $5)
+      RETURNING id, profile_id, storage_key, visibility, moderation_status, is_primary, created_at,
+                (image_data IS NOT NULL AND length(image_data) > 0) as has_image;`,
+      [data.profileId, data.storageKey, data.visibility, shouldBePrimary, data.imageData || null]
     );
     return res.rows[0];
+  },
+
+  async getPhotoById(photoId: string) {
+    const res = await this.query(
+      `SELECT id, profile_id, storage_key, visibility, moderation_status, is_primary, image_data, created_at
+       FROM public.profile_photos
+       WHERE id = $1
+       LIMIT 1;`,
+      [photoId]
+    );
+    return res.rows[0] || null;
+  },
+
+  async updatePhoto(
+    profileId: string,
+    photoId: string,
+    updates: {
+      visibility?: "PUBLIC_TO_MEMBERS" | "BLURRED" | "APPROVAL_REQUIRED";
+      isPrimary?: boolean;
+    }
+  ) {
+    if (updates.isPrimary) {
+      await this.query(
+        `UPDATE public.profile_photos SET is_primary = FALSE WHERE profile_id = $1;`,
+        [profileId]
+      );
+    }
+    const res = await this.query(
+      `UPDATE public.profile_photos
+       SET visibility = COALESCE($3, visibility),
+           is_primary = COALESCE($4, is_primary)
+       WHERE id = $1 AND profile_id = $2
+       RETURNING id, profile_id, storage_key, visibility, moderation_status, is_primary,
+                 (image_data IS NOT NULL AND length(image_data) > 0) as has_image;`,
+      [photoId, profileId, updates.visibility || null, updates.isPrimary ?? null]
+    );
+    return res.rows[0] || null;
+  },
+
+  async deletePhoto(profileId: string, photoId: string) {
+    const res = await this.query(
+      `DELETE FROM public.profile_photos WHERE id = $1 AND profile_id = $2 RETURNING id;`,
+      [photoId, profileId]
+    );
+    return (res.rowCount ?? 0) > 0;
+  },
+
+  async getAdminPhotos(statusFilter: string = "PENDING") {
+    const validStatuses = ["PENDING", "APPROVED", "REJECTED"];
+    const useAll = statusFilter === "ALL" || !validStatuses.includes(statusFilter);
+    const res = await this.query(
+      `SELECT ph.id, ph.profile_id, ph.storage_key, ph.visibility, ph.moderation_status,
+              ph.is_primary, ph.created_at,
+              (ph.image_data IS NOT NULL AND length(ph.image_data) > 0) as has_image,
+              p.public_id, p.first_name, p.gender, p.city, p.state
+       FROM public.profile_photos ph
+       JOIN public.profiles p ON ph.profile_id = p.id
+       WHERE ($1::boolean OR ph.moderation_status = $2)
+       ORDER BY ph.created_at DESC
+       LIMIT 100;`,
+      [useAll, statusFilter]
+    );
+    return res.rows;
+  },
+
+  async moderatePhoto(
+    adminId: string,
+    photoId: string,
+    action: "APPROVED" | "REJECTED",
+    notes?: string
+  ) {
+    const res = await this.query(
+      `UPDATE public.profile_photos
+       SET moderation_status = $1
+       WHERE id = $2
+       RETURNING id, profile_id, storage_key, visibility, moderation_status, is_primary;`,
+      [action, photoId]
+    );
+    if (res.rows[0]) {
+      await this.logAuditEvent({
+        actorId: adminId,
+        action: `ADMIN_PHOTO_${action}`,
+        targetType: "PHOTO",
+        targetId: photoId,
+        metadata: { action, notes: notes || "", profileId: res.rows[0].profile_id },
+      });
+    }
+    return res.rows[0] || null;
   },
 
   // --------------------------------------------------------------------------
@@ -469,6 +661,7 @@ export const db = {
     profileId: string;
     verificationType: "MOBILE_OTP" | "SELFIE" | "ADMIN_MANUAL" | "OPTIONAL_ID";
     selfieStorageKey?: string;
+    selfieImageData?: string;
   }) {
     const existing = await this.query(
       `SELECT id FROM public.verification_requests 
@@ -482,22 +675,23 @@ export const db = {
         `UPDATE public.verification_requests 
          SET status = 'PENDING',
              selfie_storage_key = COALESCE($2, selfie_storage_key),
+             selfie_image_data = COALESCE($3, selfie_image_data),
              reviewed_by = NULL,
              reviewer_notes = NULL,
              verified_at = NULL,
              updated_at = NOW()
          WHERE id = $1
-         RETURNING *;`,
-        [existing.rows[0].id, data.selfieStorageKey || null]
+         RETURNING id, profile_id, verification_type, status, selfie_storage_key, created_at, updated_at;`,
+        [existing.rows[0].id, data.selfieStorageKey || null, data.selfieImageData || null]
       );
       return res.rows[0];
     } else {
       const res = await this.query(
         `INSERT INTO public.verification_requests (
-          profile_id, verification_type, status, selfie_storage_key
-        ) VALUES ($1, $2, 'PENDING', $3)
-        RETURNING *;`,
-        [data.profileId, data.verificationType, data.selfieStorageKey || null]
+          profile_id, verification_type, status, selfie_storage_key, selfie_image_data
+        ) VALUES ($1, $2, 'PENDING', $3, $4)
+        RETURNING id, profile_id, verification_type, status, selfie_storage_key, created_at, updated_at;`,
+        [data.profileId, data.verificationType, data.selfieStorageKey || null, data.selfieImageData || null]
       );
       return res.rows[0];
     }
@@ -574,8 +768,9 @@ export const db = {
         dp.id, dp.public_id, dp.first_name, dp.gender, dp.age, dp.height_cm,
         dp.marital_status, dp.country, dp.state, dp.city, dp.sub_community,
         dp.completion_score, dp.highest_education, dp.employed_in, dp.occupation, dp.diet,
-        (SELECT storage_key FROM public.profile_photos WHERE profile_id = dp.id AND visibility = 'PUBLIC_TO_MEMBERS' LIMIT 1) as photo_key,
-        (SELECT visibility FROM public.profile_photos WHERE profile_id = dp.id LIMIT 1) as photo_visibility,
+        (SELECT id FROM public.profile_photos WHERE profile_id = dp.id AND moderation_status = 'APPROVED' AND image_data IS NOT NULL ORDER BY is_primary DESC, created_at DESC LIMIT 1) as photo_id,
+        (SELECT storage_key FROM public.profile_photos WHERE profile_id = dp.id AND visibility = 'PUBLIC_TO_MEMBERS' AND moderation_status = 'APPROVED' ORDER BY is_primary DESC, created_at DESC LIMIT 1) as photo_key,
+        (SELECT visibility FROM public.profile_photos WHERE profile_id = dp.id AND moderation_status = 'APPROVED' ORDER BY is_primary DESC, created_at DESC LIMIT 1) as photo_visibility,
         (SELECT status = 'APPROVED' FROM public.verification_requests WHERE profile_id = dp.id AND verification_type = 'SELFIE' LIMIT 1) as selfie_verified
       FROM public.discovery_profiles dp
       WHERE 1=1
@@ -591,17 +786,21 @@ export const db = {
       sql += ` AND dp.gender = $${paramIndex++}`;
       params.push(filters.gender);
     }
-    if (filters.minAge) {
+    if (filters.minAge !== undefined && !Number.isNaN(filters.minAge)) {
       sql += ` AND dp.age >= $${paramIndex++}`;
       params.push(filters.minAge);
     }
-    if (filters.maxAge) {
+    if (filters.maxAge !== undefined && !Number.isNaN(filters.maxAge)) {
       sql += ` AND dp.age <= $${paramIndex++}`;
       params.push(filters.maxAge);
     }
     if (filters.state) {
       sql += ` AND dp.state ILIKE $${paramIndex++}`;
       params.push(`%${filters.state}%`);
+    }
+    if (filters.city) {
+      sql += ` AND dp.city ILIKE $${paramIndex++}`;
+      params.push(`%${filters.city}%`);
     }
     if (filters.subCommunity) {
       sql += ` AND dp.sub_community ILIKE $${paramIndex++}`;
@@ -631,6 +830,7 @@ export const db = {
       employedIn: r.employed_in,
       occupation: r.occupation,
       diet: r.diet,
+      photoId: r.photo_id || null,
       photoKey: r.photo_key,
       photoVisibility: r.photo_visibility || "APPROVAL_REQUIRED",
       selfieVerified: !!r.selfie_verified,
@@ -639,82 +839,91 @@ export const db = {
 
   async getPublicProfileByPublicId(publicId: string, viewerProfileId?: string) {
     const pRes = await this.query(
-      `SELECT * FROM public.profiles WHERE public_id = $1 AND publication_status = 'PUBLISHED' LIMIT 1;`,
+      `SELECT 
+         p.*,
+         pd.highest_education, pd.education_detail, pd.employed_in, pd.occupation,
+         pd.annual_income_range, pd.mother_tongue, pd.diet, pd.about_me,
+         fd.father_occupation, fd.mother_occupation, fd.family_type, fd.family_values, fd.about_family,
+         pp.min_age, pp.max_age, pp.preferred_states
+       FROM public.profiles p
+       LEFT JOIN public.profile_details pd ON p.id = pd.profile_id
+       LEFT JOIN public.family_details fd ON p.id = fd.profile_id
+       LEFT JOIN public.profile_preferences pp ON p.id = pp.profile_id
+       WHERE p.public_id = $1 AND p.publication_status = 'PUBLISHED'
+       LIMIT 1;`,
       [publicId]
     );
-    const profile = pRes.rows[0];
-    if (!profile) return null;
+    const row = pRes.rows[0];
+    if (!row) return null;
 
-    const [detailsRes, familyRes, prefsRes, photosRes, badgesRes, interestRes, contactRes, biodataShareRes] =
-      await Promise.all([
-        this.query(`SELECT * FROM public.profile_details WHERE profile_id = $1;`, [profile.id]),
-        this.query(`SELECT * FROM public.family_details WHERE profile_id = $1;`, [profile.id]),
-        this.query(`SELECT * FROM public.profile_preferences WHERE profile_id = $1;`, [profile.id]),
-        this.query(
-          `SELECT id, storage_key, visibility, is_primary FROM public.profile_photos WHERE profile_id = $1 AND moderation_status = 'APPROVED';`,
-          [profile.id]
-        ),
-        this.getVerificationBadges(profile.id),
-        viewerProfileId
-          ? this.query(
-              `SELECT * FROM public.interests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
-              [viewerProfileId, profile.id]
-            )
-          : { rows: [] },
-        viewerProfileId
-          ? this.query(
-              `SELECT * FROM public.contact_exchange_requests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
-              [viewerProfileId, profile.id]
-            )
-          : { rows: [] },
-        viewerProfileId
-          ? this.query(
-              `SELECT * FROM public.biodata_shares WHERE owner_profile_id = $1 AND requester_profile_id = $2 LIMIT 1;`,
-              [profile.id, viewerProfileId]
-            )
-          : { rows: [] },
-      ]);
+    const [photosRes, badgesRes, interestRes, contactRes, biodataShareRes] = await Promise.all([
+      this.query(
+        `SELECT id, storage_key, visibility, is_primary,
+                (image_data IS NOT NULL AND length(image_data) > 0) as has_image
+         FROM public.profile_photos
+         WHERE profile_id = $1 AND moderation_status = 'APPROVED'
+         ORDER BY is_primary DESC, created_at DESC;`,
+        [row.id]
+      ),
+      this.getVerificationBadges(row.id),
+      viewerProfileId
+        ? this.query(
+            `SELECT * FROM public.interests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
+            [viewerProfileId, row.id]
+          )
+        : { rows: [] },
+      viewerProfileId
+        ? this.query(
+            `SELECT * FROM public.contact_exchange_requests WHERE (sender_profile_id = $1 AND receiver_profile_id = $2) OR (sender_profile_id = $2 AND receiver_profile_id = $1) LIMIT 1;`,
+            [viewerProfileId, row.id]
+          )
+        : { rows: [] },
+      viewerProfileId
+        ? this.query(
+            `SELECT * FROM public.biodata_shares WHERE owner_profile_id = $1 AND requester_profile_id = $2 LIMIT 1;`,
+            [row.id, viewerProfileId]
+          )
+        : { rows: [] },
+    ]);
 
-    const details = detailsRes.rows[0] || {};
-    const family = familyRes.rows[0] || {};
-    const prefs = prefsRes.rows[0] || {};
     const age = Math.floor(
-      (new Date().getTime() - new Date(profile.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+      (new Date().getTime() - new Date(row.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
     );
 
     return {
-      id: profile.id,
-      publicId: profile.public_id,
-      firstName: profile.first_name,
-      gender: profile.gender,
+      id: row.id,
+      publicId: row.public_id,
+      firstName: row.first_name,
+      gender: row.gender,
       age,
-      heightCm: profile.height_cm,
-      maritalStatus: profile.marital_status,
-      state: profile.state,
-      city: profile.city,
-      subCommunity: profile.sub_community,
-      completionScore: profile.completion_score,
-      highestEducation: details.highest_education,
-      educationDetail: details.education_detail,
-      employedIn: details.employed_in,
-      occupation: details.occupation,
-      annualIncomeRange: details.annual_income_range,
-      motherTongue: details.mother_tongue,
-      diet: details.diet,
-      aboutMe: details.about_me,
-      fatherOccupation: family.father_occupation,
-      motherOccupation: family.mother_occupation,
-      familyType: family.family_type,
-      familyValues: family.family_values,
-      aboutFamily: family.about_family,
-      prefMinAge: prefs.min_age,
-      prefMaxAge: prefs.max_age,
-      prefStates: prefs.preferred_states,
+      heightCm: row.height_cm,
+      maritalStatus: row.marital_status,
+      state: row.state,
+      city: row.city,
+      subCommunity: row.sub_community,
+      completionScore: row.completion_score,
+      highestEducation: row.highest_education,
+      educationDetail: row.education_detail,
+      employedIn: row.employed_in,
+      occupation: row.occupation,
+      annualIncomeRange: row.annual_income_range,
+      motherTongue: row.mother_tongue,
+      diet: row.diet,
+      aboutMe: row.about_me,
+      fatherOccupation: row.father_occupation,
+      motherOccupation: row.mother_occupation,
+      familyType: row.family_type,
+      familyValues: row.family_values,
+      aboutFamily: row.about_family,
+      prefMinAge: row.min_age,
+      prefMaxAge: row.max_age,
+      prefStates: row.preferred_states,
       photos: photosRes.rows.map((p) => ({
         id: p.id,
         storageKey: p.storage_key,
         visibility: p.visibility,
         isPrimary: p.is_primary,
+        hasImage: !!p.has_image,
       })),
       badges: badgesRes.badges,
       relationshipState: {
@@ -957,9 +1166,10 @@ export const db = {
     let decryptedPhone: string | null = null;
     if (canViewPhone && target.phone_encrypted && target.phone_iv && target.phone_tag) {
       try {
-        decryptedPhone = decryptData(target.phone_encrypted, target.phone_iv, target.phone_tag);
+        const raw = decryptData(target.phone_encrypted, target.phone_iv, target.phone_tag);
+        decryptedPhone = raw.startsWith("google:") ? null : raw;
       } catch {
-        decryptedPhone = "+91 98765 43210";
+        decryptedPhone = null;
       }
     }
 
@@ -1576,36 +1786,60 @@ export const db = {
   },
 
   async getAdminDashboardStats() {
-    const [profilesRes, verificationsRes, reportsRes, usersRes] = await Promise.all([
-      this.query(`SELECT COUNT(*)::int as count FROM public.profiles WHERE publication_status = 'PENDING_REVIEW';`),
-      this.query(`SELECT COUNT(*)::int as count FROM public.verification_requests WHERE status = 'PENDING';`),
-      this.query(`SELECT COUNT(*)::int as count FROM public.reports WHERE status IN ('PENDING', 'INVESTIGATING');`),
-      this.query(`SELECT COUNT(*)::int as count FROM public.users WHERE status = 'ACTIVE';`),
-    ]);
-
+    const res = await this.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM public.profiles WHERE publication_status = 'PENDING_REVIEW') AS pending_profiles,
+        (SELECT COUNT(*)::int FROM public.profiles WHERE publication_status = 'PUBLISHED') AS published_profiles,
+        (SELECT COUNT(*)::int FROM public.profiles) AS total_profiles,
+        (SELECT COUNT(*)::int FROM public.profile_photos WHERE moderation_status = 'PENDING') AS pending_photos,
+        (SELECT COUNT(*)::int FROM public.verification_requests WHERE status = 'PENDING') AS pending_verifications,
+        (SELECT COUNT(*)::int FROM public.reports WHERE status IN ('PENDING', 'INVESTIGATING')) AS active_reports,
+        (SELECT COUNT(*)::int FROM public.users WHERE status = 'ACTIVE') AS total_users;
+    `);
+    const r = res.rows[0] || {};
     return {
-      pendingProfiles: profilesRes.rows[0]?.count || 0,
-      pendingVerifications: verificationsRes.rows[0]?.count || 0,
-      activeReports: reportsRes.rows[0]?.count || 0,
-      totalUsers: usersRes.rows[0]?.count || 0,
+      pendingProfiles: r.pending_profiles || 0,
+      publishedProfiles: r.published_profiles || 0,
+      totalProfiles: r.total_profiles || 0,
+      pendingPhotos: r.pending_photos || 0,
+      pendingVerifications: r.pending_verifications || 0,
+      activeReports: r.active_reports || 0,
+      totalUsers: r.total_users || 0,
     };
   },
 
-  async getPendingProfiles() {
-    const res = await this.query(`
-      SELECT 
+  async getAdminProfiles(statusFilter: string = "PENDING_REVIEW", search?: string) {
+    const validStatuses = ["PENDING_REVIEW", "PUBLISHED", "REJECTED", "SUSPENDED", "DRAFT"];
+    const useAll = statusFilter === "ALL" || !validStatuses.includes(statusFilter);
+    const searchTerm = search?.trim() ? `%${search.trim()}%` : null;
+
+    const res = await this.query(
+      `SELECT 
         p.id, p.public_id, p.first_name, p.gender, p.dob, p.height_cm,
         p.marital_status, p.state, p.city, p.sub_community, p.publication_status,
-        p.completion_score, p.created_at,
+        p.is_discoverable, p.completion_score, p.created_at,
+        u.email as user_email, u.status as user_status,
         pd.highest_education, pd.occupation, pd.employed_in, pd.annual_income_range,
         pd.diet, pd.about_me,
         fd.father_occupation, fd.family_type, fd.about_family
       FROM public.profiles p
+      JOIN public.users u ON p.owner_user_id = u.id
       LEFT JOIN public.profile_details pd ON p.id = pd.profile_id
       LEFT JOIN public.family_details fd ON p.id = fd.profile_id
-      WHERE p.publication_status = 'PENDING_REVIEW'
-      ORDER BY p.created_at ASC;
-    `);
+      WHERE ($1::boolean OR p.publication_status = $2)
+        AND (
+          $3::text IS NULL
+          OR p.public_id ILIKE $3
+          OR p.first_name ILIKE $3
+          OR p.city ILIKE $3
+          OR p.state ILIKE $3
+          OR COALESCE(p.sub_community, '') ILIKE $3
+          OR COALESCE(u.email, '') ILIKE $3
+        )
+      ORDER BY p.created_at DESC
+      LIMIT 100;`,
+      [useAll, statusFilter, searchTerm]
+    );
 
     return res.rows.map((row) => ({
       id: row.id,
@@ -1620,8 +1854,11 @@ export const db = {
       city: row.city,
       subCommunity: row.sub_community,
       publicationStatus: row.publication_status,
+      isDiscoverable: row.is_discoverable,
       completionScore: row.completion_score,
       createdAt: row.created_at,
+      userEmail: row.user_email,
+      userStatus: row.user_status,
       highestEducation: row.highest_education,
       occupation: row.occupation,
       employedIn: row.employed_in,
@@ -1632,6 +1869,10 @@ export const db = {
       familyType: row.family_type,
       aboutFamily: row.about_family,
     }));
+  },
+
+  async getPendingProfiles() {
+    return this.getAdminProfiles("PENDING_REVIEW");
   },
 
   async moderateProfile(
@@ -1663,13 +1904,24 @@ export const db = {
     const res = await this.query(`
       SELECT 
         v.id, v.profile_id, v.verification_type, v.status, v.selfie_storage_key,
-        v.created_at, v.reviewer_notes,
+        v.selfie_image_data, v.created_at, v.reviewer_notes,
         p.public_id, p.first_name, p.gender, p.city, p.state
       FROM public.verification_requests v
       JOIN public.profiles p ON v.profile_id = p.id
       WHERE v.status = 'PENDING'
       ORDER BY v.created_at ASC;
     `);
+    return res.rows;
+  },
+
+  async getRecentAuditLogs(limit = 25) {
+    const res = await this.query(
+      `SELECT id, actor_id, action, target_type, target_id, metadata, created_at
+       FROM public.audit_logs
+       ORDER BY created_at DESC
+       LIMIT $1;`,
+      [limit]
+    );
     return res.rows;
   },
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import {
   Heart,
@@ -18,13 +19,17 @@ import {
   AlertCircle,
   RefreshCw,
   Mail,
+  MessageSquare,
 } from "lucide-react";
 
 export default function ConnectionsPage() {
   const { t } = useTranslation();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<"received" | "sent" | "shortlists" | "exchanges">("received");
   const [loading, setLoading] = useState(true);
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [receivedInterests, setReceivedInterests] = useState<any[]>([]);
   const [sentInterests, setSentInterests] = useState<any[]>([]);
@@ -34,15 +39,21 @@ export default function ConnectionsPage() {
   // Disclosed contacts revealed on demand
   const [disclosedContacts, setDisclosedContacts] = useState<Record<string, { phone: string | null; email: string | null }>>({});
   const [revealingId, setRevealingId] = useState<string | null>(null);
+  const [respondingExchangeId, setRespondingExchangeId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [interestsRes, shortlistsRes, exchangesRes] = await Promise.all([
-        fetch("/api/interests"),
-        fetch("/api/shortlists"),
-        fetch("/api/contact-exchange"),
+        fetch("/api/interests", { cache: "no-store" }),
+        fetch("/api/shortlists", { cache: "no-store" }),
+        fetch("/api/contact-exchange", { cache: "no-store" }),
       ]);
+
+      if (interestsRes.status === 401) {
+        router.push("/login");
+        return;
+      }
 
       if (interestsRes.ok) {
         const data = await interestsRes.json();
@@ -55,6 +66,7 @@ export default function ConnectionsPage() {
       }
       if (exchangesRes.ok) {
         const data = await exchangesRes.json();
+        if (data.myProfileId) setMyProfileId(data.myProfileId);
         setExchanges(data.requests || []);
       }
     } catch (err) {
@@ -62,7 +74,7 @@ export default function ConnectionsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     loadData();
@@ -75,32 +87,70 @@ export default function ConnectionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ interestId, action }),
       });
-      if (res.ok) {
-        setReceivedInterests((prev) =>
-          prev.map((i) => (i.id === interestId ? { ...i, status: action } : i))
-        );
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to respond to interest");
+
+      setReceivedInterests((prev) =>
+        prev.map((i) => (i.id === interestId ? { ...i, status: action } : i))
+      );
+      setActionMsg({
+        type: "success",
+        text: action === "ACCEPTED" ? "Interest accepted! Encrypted messaging is now unlocked." : "Interest declined.",
+      });
     } catch (err) {
-      console.error("Error responding to interest:", err);
+      const msg = err instanceof Error ? err.message : "Error responding to interest";
+      setActionMsg({ type: "error", text: msg });
+    }
+  };
+
+  const handleRespondExchange = async (
+    requestId: string,
+    action: "APPROVE" | "REJECT" | "WITHDRAW"
+  ) => {
+    setRespondingExchangeId(requestId);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/contact-exchange", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          action,
+          disclosePhone: true,
+          discloseEmail: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update contact exchange");
+
+      setExchanges((prev) =>
+        prev.map((ex) => (ex.id === requestId ? { ...ex, status: data.request?.status || ex.status } : ex))
+      );
+      setActionMsg({ type: "success", text: data.message || "Contact exchange updated." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error updating contact exchange";
+      setActionMsg({ type: "error", text: msg });
+    } finally {
+      setRespondingExchangeId(null);
     }
   };
 
   const handleRevealContact = async (requestId: string) => {
     setRevealingId(requestId);
     try {
-      const res = await fetch(`/api/contact-exchange/${requestId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDisclosedContacts((prev) => ({
-          ...prev,
-          [requestId]: {
-            phone: data.contact?.phone,
-            email: data.contact?.email,
-          },
-        }));
-      }
+      const res = await fetch(`/api/contact-exchange/${requestId}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to reveal contact");
+      setDisclosedContacts((prev) => ({
+        ...prev,
+        [requestId]: {
+          phone: data.contact?.phone || null,
+          email: data.contact?.email || null,
+        },
+      }));
     } catch (err) {
-      console.error("Error revealing contact:", err);
+      const msg = err instanceof Error ? err.message : "Error revealing contact";
+      setActionMsg({ type: "error", text: msg });
     } finally {
       setRevealingId(null);
     }
@@ -121,6 +171,23 @@ export default function ConnectionsPage() {
           {t("connections.pageSubtitle")}
         </p>
       </div>
+
+      {actionMsg && (
+        <div
+          className={`p-4 rounded-2xl border text-xs flex items-center space-x-2.5 font-semibold ${
+            actionMsg.type === "success"
+              ? "bg-forest-50 border-forest-200 text-forest"
+              : "bg-rose-50 border-rose-200 text-plum"
+          }`}
+        >
+          {actionMsg.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          )}
+          <span>{actionMsg.text}</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center space-x-2 border-b border-warmgrey pb-1 overflow-x-auto">
@@ -183,7 +250,7 @@ export default function ConnectionsPage() {
                       </p>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {item.status === "SENT" ? (
                         <>
                           <button
@@ -202,20 +269,32 @@ export default function ConnectionsPage() {
                           </button>
                         </>
                       ) : (
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold ${
-                            item.status === "ACCEPTED"
-                              ? "bg-forest-50 text-forest"
-                              : "bg-rose-50 text-plum"
-                          }`}
-                        >
-                          {item.status === "ACCEPTED" ? t("connections.accepted") : t("connections.declined")}
-                        </span>
+                        <>
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-bold ${
+                              item.status === "ACCEPTED"
+                                ? "bg-forest-50 text-forest"
+                                : "bg-rose-50 text-plum"
+                            }`}
+                          >
+                            {item.status === "ACCEPTED" ? t("connections.accepted") : t("connections.declined")}
+                          </span>
+                          {item.status === "ACCEPTED" && (
+                            <Link
+                              href={`/messages/${item.public_id}`}
+                              className="py-2 px-3 rounded-xl bg-plum text-ivory text-xs font-bold hover:bg-plum-900 transition flex items-center space-x-1.5"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-gold-300" />
+                              <span>Message</span>
+                            </Link>
+                          )}
+                        </>
                       )}
 
                       <Link
                         href={`/discovery/${item.public_id}`}
                         className="p-2 rounded-xl border border-warmgrey text-charcoal hover:bg-ivory"
+                        title="View Profile"
                       >
                         <Eye className="w-4 h-4" />
                       </Link>
@@ -252,9 +331,24 @@ export default function ConnectionsPage() {
                     </div>
 
                     <div className="flex items-center space-x-3">
-                      <span className="px-3 py-1 rounded-full bg-ivory border border-warmgrey text-xs font-bold text-charcoal">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          item.status === "ACCEPTED"
+                            ? "bg-forest-50 text-forest border border-forest-200"
+                            : "bg-ivory border border-warmgrey text-charcoal"
+                        }`}
+                      >
                         {item.status === "SENT" ? "Awaiting Response" : item.status}
                       </span>
+                      {item.status === "ACCEPTED" && (
+                        <Link
+                          href={`/messages/${item.public_id}`}
+                          className="py-2 px-3 rounded-xl bg-plum text-ivory text-xs font-bold hover:bg-plum-900 transition flex items-center space-x-1.5"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-gold-300" />
+                          <span>Message</span>
+                        </Link>
+                      )}
                       <Link
                         href={`/discovery/${item.public_id}`}
                         className="py-2 px-3 rounded-xl border border-warmgrey text-xs font-semibold hover:bg-ivory flex items-center space-x-1"
@@ -290,7 +384,7 @@ export default function ConnectionsPage() {
                         </span>
                       </div>
                       <p className="text-xs text-charcoal-light mt-1">
-                        {item.city}, {item.state} • {item.occupation}
+                        {item.city}, {item.state} • {item.occupation || "Community Member"}
                       </p>
                     </div>
 
@@ -317,7 +411,11 @@ export default function ConnectionsPage() {
               ) : (
                 exchanges.map((ex) => {
                   const isBothApproved = ex.status === "BOTH_APPROVED";
+                  const isPendingApproval = ex.status === "SENDER_APPROVED";
+                  const isReceiver = myProfileId && ex.receiver_profile_id === myProfileId;
+                  const isSender = myProfileId && ex.sender_profile_id === myProfileId;
                   const disclosed = disclosedContacts[ex.id];
+                  const isBusy = respondingExchangeId === ex.id;
 
                   return (
                     <div
@@ -341,10 +439,14 @@ export default function ConnectionsPage() {
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>{t("connections.bothApproved")}</span>
                           </span>
-                        ) : (
+                        ) : isPendingApproval ? (
                           <span className="px-3 py-1 rounded-full bg-gold-50 border border-gold-300 text-gold-800 text-xs font-bold flex items-center space-x-1.5">
                             <Clock className="w-3.5 h-3.5" />
                             <span>Pending Dual Approval</span>
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-plum text-xs font-bold">
+                            {ex.status}
                           </span>
                         )}
                       </div>
@@ -359,28 +461,24 @@ export default function ConnectionsPage() {
 
                           {disclosed ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-1">
-                              {disclosed.phone && (
-                                <div className="p-3.5 rounded-xl bg-white border border-warmgrey space-y-1">
-                                  <span className="text-charcoal-light text-[11px] font-semibold flex items-center space-x-1">
-                                    <Phone className="w-3 h-3 text-plum" />
-                                    <span>{t("connections.phoneLabel")}</span>
-                                  </span>
-                                  <span className="text-sm font-mono font-extrabold text-plum">
-                                    {disclosed.phone}
-                                  </span>
-                                </div>
-                              )}
-                              {disclosed.email && (
-                                <div className="p-3.5 rounded-xl bg-white border border-warmgrey space-y-1">
-                                  <span className="text-charcoal-light text-[11px] font-semibold flex items-center space-x-1">
-                                    <Mail className="w-3 h-3 text-plum" />
-                                    <span>{t("connections.emailLabel")}</span>
-                                  </span>
-                                  <span className="text-sm font-mono font-bold text-charcoal">
-                                    {disclosed.email}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="p-3.5 rounded-xl bg-white border border-warmgrey space-y-1">
+                                <span className="text-charcoal-light text-[11px] font-semibold flex items-center space-x-1">
+                                  <Phone className="w-3 h-3 text-plum" />
+                                  <span>{t("connections.phoneLabel")}</span>
+                                </span>
+                                <span className="text-sm font-mono font-extrabold text-plum">
+                                  {disclosed.phone || "Not shared"}
+                                </span>
+                              </div>
+                              <div className="p-3.5 rounded-xl bg-white border border-warmgrey space-y-1">
+                                <span className="text-charcoal-light text-[11px] font-semibold flex items-center space-x-1">
+                                  <Mail className="w-3 h-3 text-plum" />
+                                  <span>{t("connections.emailLabel")}</span>
+                                </span>
+                                <span className="text-sm font-mono font-bold text-charcoal">
+                                  {disclosed.email || "Not shared"}
+                                </span>
+                              </div>
                             </div>
                           ) : (
                             <button
@@ -393,12 +491,52 @@ export default function ConnectionsPage() {
                             </button>
                           )}
                         </div>
+                      ) : isPendingApproval ? (
+                        <div className="p-4 rounded-2xl bg-ivory border border-warmgrey space-y-3">
+                          <div className="text-xs text-charcoal-light flex items-center space-x-2">
+                            <Lock className="w-4 h-4 text-plum flex-shrink-0" />
+                            <span>
+                              Contact numbers remain encrypted until both candidates have independently granted approval.
+                            </span>
+                          </div>
+
+                          {isReceiver && (
+                            <div className="flex flex-wrap items-center gap-3 pt-1">
+                              <button
+                                onClick={() => handleRespondExchange(ex.id, "APPROVE")}
+                                disabled={isBusy}
+                                className="py-2.5 px-5 rounded-xl bg-forest hover:bg-forest-800 text-ivory text-xs font-bold transition flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>{isBusy ? "Processing..." : "Approve & Share Contact"}</span>
+                              </button>
+                              <button
+                                onClick={() => handleRespondExchange(ex.id, "REJECT")}
+                                disabled={isBusy}
+                                className="py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-plum text-xs font-bold transition flex items-center space-x-1.5 disabled:opacity-50"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Decline</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {isSender && (
+                            <div className="pt-1">
+                              <button
+                                onClick={() => handleRespondExchange(ex.id, "WITHDRAW")}
+                                disabled={isBusy}
+                                className="py-2 px-4 rounded-xl border border-warmgrey bg-white hover:bg-rose-50 text-plum text-xs font-bold transition disabled:opacity-50"
+                              >
+                                {isBusy ? "Withdrawing..." : "Withdraw Request"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="p-4 rounded-2xl bg-ivory border border-warmgrey text-xs text-charcoal-light flex items-center space-x-2">
                           <Lock className="w-4 h-4 text-plum flex-shrink-0" />
-                          <span>
-                            Contact numbers remain encrypted until both candidates have independently granted approval.
-                          </span>
+                          <span>This contact exchange request was {ex.status.toLowerCase()}.</span>
                         </div>
                       )}
                     </div>

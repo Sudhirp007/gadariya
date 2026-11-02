@@ -1,16 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import { BrandLogo } from "@/components/BrandLogo";
-import { ShieldCheck, Mail, KeyRound, AlertCircle, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, Mail, KeyRound, AlertCircle, ArrowRight, CheckCircle2, ArrowLeft } from "lucide-react";
 
 export default function AdminLoginPage() {
   const { t } = useTranslation();
   const router = useRouter();
 
-  const [email, setEmail] = useState("admin@palmatrimony.in");
+  const [email, setEmail] = useState("05sudhirpal@gmail.com");
   const [step, setStep] = useState<"EMAIL" | "MFA">("EMAIL");
   const [mfaCode, setMfaCode] = useState("");
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
       const data = await res.json();
@@ -56,12 +57,13 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/admin/mfa/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code: mfaCode }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: mfaCode.trim() }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "MFA Verification failed");
 
+      window.dispatchEvent(new Event("pal-auth-changed"));
       router.push("/admin");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error verifying MFA code";
@@ -86,7 +88,7 @@ export default function AdminLoginPage() {
             {t("admin.portalTitle")}
           </h1>
           <p className="text-xs text-charcoal-light">
-            Restricted access for authorized community moderators and super administrators. MFA required.
+            Restricted access for authorized community moderators and super administrators. Two-step MFA verification required.
           </p>
         </div>
 
@@ -109,7 +111,7 @@ export default function AdminLoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@palmatrimony.in"
+                placeholder="05sudhirpal@gmail.com"
                 className="w-full px-4 py-3 rounded-2xl border border-warmgrey bg-ivory focus:bg-white focus:outline-none focus:ring-2 focus:ring-plum text-sm font-medium transition"
               />
             </div>
@@ -135,7 +137,7 @@ export default function AdminLoginPage() {
               </p>
               {devCode && (
                 <div className="mt-2 text-xs font-mono bg-white p-2 rounded border border-forest-200 text-forest font-bold">
-                  Demo MFA Code: {devCode}
+                  Security MFA Code: {devCode}
                 </div>
               )}
             </div>
@@ -166,7 +168,7 @@ export default function AdminLoginPage() {
               </button>
               <button
                 type="submit"
-                disabled={loading || mfaCode.length !== 6}
+                disabled={loading || mfaCode.trim().length !== 6}
                 className="w-2/3 py-3.5 px-6 rounded-2xl bg-forest hover:bg-forest-800 text-ivory font-bold text-sm shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50"
               >
                 <span>{loading ? "Authenticating..." : t("admin.verifyMfaButton")}</span>
@@ -174,6 +176,16 @@ export default function AdminLoginPage() {
             </div>
           </form>
         )}
+
+        <div className="pt-2 border-t border-warmgrey text-center">
+          <Link
+            href="/"
+            className="inline-flex items-center space-x-1.5 text-xs font-semibold text-plum hover:underline"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Pal Matrimony Website</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

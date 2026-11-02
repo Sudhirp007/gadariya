@@ -3,16 +3,13 @@ import { z } from "zod";
 import { getServerSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 
-async function resolveProfileId(): Promise<string> {
-  const session = await getServerSession();
-  if (session?.profileId) return session.profileId;
-  return await db.seedDemoProfileIfEmpty();
-}
-
 export async function GET() {
   try {
-    const profileId = await resolveProfileId();
-    const interests = await db.getInterestsForProfile(profileId);
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const interests = await db.getInterestsForProfile(session.profileId);
     return NextResponse.json({ success: true, interests });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
@@ -28,7 +25,12 @@ const sendInterestSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const profileId = await resolveProfileId();
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const profileId = session.profileId;
+
     const body = await req.json();
     const parsed = sendInterestSchema.safeParse(body);
 

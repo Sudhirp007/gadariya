@@ -3,17 +3,18 @@ import { z } from "zod";
 import { getServerSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 
-async function resolveProfileId(): Promise<string> {
-  const session = await getServerSession();
-  if (session?.profileId) return session.profileId;
-  return await db.seedDemoProfileIfEmpty();
-}
-
 export async function GET() {
   try {
-    const profileId = await resolveProfileId();
-    const requests = await db.getUserContactRequests(profileId);
-    return NextResponse.json({ success: true, requests });
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const requests = await db.getUserContactRequests(session.profileId);
+    return NextResponse.json({
+      success: true,
+      myProfileId: session.profileId,
+      requests,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -28,7 +29,10 @@ const initiateSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const profileId = await resolveProfileId();
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
     const body = await req.json();
     const parsed = initiateSchema.safeParse(body);
 
@@ -39,7 +43,7 @@ export async function POST(req: Request) {
     const { receiverProfileId, disclosePhone, discloseEmail } = parsed.data;
 
     const request = await db.initiateContactExchange(
-      profileId,
+      session.profileId,
       receiverProfileId,
       disclosePhone,
       discloseEmail
@@ -65,7 +69,10 @@ const respondSchema = z.object({
 
 export async function PUT(req: Request) {
   try {
-    const profileId = await resolveProfileId();
+    const session = await getServerSession();
+    if (!session?.profileId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
     const body = await req.json();
     const parsed = respondSchema.safeParse(body);
 
@@ -77,7 +84,7 @@ export async function PUT(req: Request) {
 
     const updated = await db.respondContactExchange(
       requestId,
-      profileId,
+      session.profileId,
       action,
       disclosePhone,
       discloseEmail

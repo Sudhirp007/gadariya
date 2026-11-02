@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
 import { VerificationBadges } from "@/components/VerificationBadges";
 import {
@@ -18,6 +19,7 @@ import {
   Sparkles,
   Check,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 
 interface DiscoveryProfile {
@@ -36,6 +38,7 @@ interface DiscoveryProfile {
   employedIn?: string;
   occupation?: string;
   diet?: string;
+  photoId?: string | null;
   photoKey?: string;
   photoVisibility: string;
   selfieVerified: boolean;
@@ -43,14 +46,16 @@ interface DiscoveryProfile {
 
 export default function DiscoveryPage() {
   const { t } = useTranslation();
+  const router = useRouter();
 
   const [profiles, setProfiles] = useState<DiscoveryProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Filters state
+  // Filters state (string inputs for age prevent jumping to 70 on backspace!)
   const [gender, setGender] = useState<string>("");
-  const [minAge, setMinAge] = useState<number>(18);
-  const [maxAge, setMaxAge] = useState<number>(45);
+  const [minAgeInput, setMinAgeInput] = useState<string>("18");
+  const [maxAgeInput, setMaxAgeInput] = useState<string>("45");
   const [state, setState] = useState<string>("");
   const [subCommunity, setSubCommunity] = useState<string>("");
 
@@ -64,30 +69,57 @@ export default function DiscoveryPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  const fetchProfiles = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (gender) params.append("gender", gender);
-      if (minAge) params.append("minAge", minAge.toString());
-      if (maxAge) params.append("maxAge", maxAge.toString());
-      if (state) params.append("state", state);
-      if (subCommunity) params.append("subCommunity", subCommunity);
+  const fetchProfiles = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const params = new URLSearchParams();
+        if (gender) params.append("gender", gender);
 
-      const res = await fetch(`/api/discovery?${params.toString()}`);
-      if (res.ok) {
+        const parsedMin = parseInt(minAgeInput, 10);
+        const parsedMax = parseInt(maxAgeInput, 10);
+        if (!Number.isNaN(parsedMin) && parsedMin >= 18) {
+          params.append("minAge", parsedMin.toString());
+        }
+        if (!Number.isNaN(parsedMax) && parsedMax >= 18) {
+          params.append("maxAge", parsedMax.toString());
+        }
+        if (state) params.append("state", state);
+        if (subCommunity.trim()) params.append("subCommunity", subCommunity.trim());
+
+        const res = await fetch(`/api/discovery?${params.toString()}`, {
+          cache: "no-store",
+          signal,
+        });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Could not load matches");
+        }
         setProfiles(data.profiles || []);
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        const msg = err instanceof Error ? err.message : "Error fetching discovery profiles";
+        setErrorMsg(msg);
+        setProfiles([]);
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
       }
-    } catch (err) {
-      console.error("Error fetching discovery profiles:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [gender, minAge, maxAge, state, subCommunity]);
+    },
+    [gender, minAgeInput, maxAgeInput, state, subCommunity]
+  );
 
   useEffect(() => {
-    fetchProfiles();
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetchProfiles(controller.signal);
+    }, 180);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [fetchProfiles]);
 
   const handleSendInterest = async (profileId: string) => {
@@ -97,9 +129,16 @@ export default function DiscoveryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetProfileId: profileId, action: "SEND" }),
       });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      const data = await res.json();
       if (res.ok) {
         setSentInterests((prev) => ({ ...prev, [profileId]: true }));
         showToast("Interest sent with respectful notification!");
+      } else {
+        showToast(data.error || "Could not send interest");
       }
     } catch {
       showToast("Error sending interest");
@@ -113,6 +152,10 @@ export default function DiscoveryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetProfileId: profileId }),
       });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setShortlisted((prev) => ({ ...prev, [profileId]: data.shortlisted }));
@@ -146,16 +189,21 @@ export default function DiscoveryPage() {
 
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-plum text-ivory text-xs font-bold shadow-xl border border-gold-300 animate-bounce">
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-plum text-ivory text-xs font-bold shadow-xl border border-gold-300">
           {toastMsg}
         </div>
       )}
 
       {/* Filters Bar */}
       <div className="bg-white rounded-3xl border border-warmgrey p-5 shadow-sm space-y-4">
-        <div className="flex items-center space-x-2 text-xs font-bold text-plum uppercase">
-          <Filter className="w-4 h-4" />
-          <span>{t("discovery.filters")}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs font-bold text-plum uppercase">
+            <Filter className="w-4 h-4" />
+            <span>{t("discovery.filters")}</span>
+          </div>
+          <span className="text-xs text-charcoal-light font-semibold">
+            Showing {profiles.length} verified {profiles.length === 1 ? "profile" : "profiles"}
+          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
@@ -180,18 +228,28 @@ export default function DiscoveryPage() {
               <input
                 type="number"
                 min={18}
-                max={maxAge}
-                value={minAge}
-                onChange={(e) => setMinAge(parseInt(e.target.value) || 18)}
+                max={75}
+                value={minAgeInput}
+                onChange={(e) => setMinAgeInput(e.target.value)}
+                onBlur={() => {
+                  const n = parseInt(minAgeInput, 10);
+                  if (Number.isNaN(n) || n < 18) setMinAgeInput("18");
+                }}
+                aria-label="Minimum Age"
                 className="w-1/2 px-2.5 py-2 rounded-xl border border-warmgrey bg-ivory text-center"
               />
               <span className="text-charcoal-light">to</span>
               <input
                 type="number"
-                min={minAge}
-                max={70}
-                value={maxAge}
-                onChange={(e) => setMaxAge(parseInt(e.target.value) || 70)}
+                min={18}
+                max={80}
+                value={maxAgeInput}
+                onChange={(e) => setMaxAgeInput(e.target.value)}
+                onBlur={() => {
+                  const n = parseInt(maxAgeInput, 10);
+                  if (Number.isNaN(n) || n < 18) setMaxAgeInput("45");
+                }}
+                aria-label="Maximum Age"
                 className="w-1/2 px-2.5 py-2 rounded-xl border border-warmgrey bg-ivory text-center"
               />
             </div>
@@ -221,20 +279,21 @@ export default function DiscoveryPage() {
             <label className="font-semibold text-charcoal">{t("discovery.filterSubCommunity")}</label>
             <input
               type="text"
-              placeholder="e.g. Dhangar, Baghel"
+              placeholder="e.g. Dhangar, Baghel, Holkar"
               value={subCommunity}
               onChange={(e) => setSubCommunity(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-warmgrey bg-ivory focus:bg-white focus:outline-none focus:ring-1 focus:ring-plum"
             />
           </div>
 
-          {/* Reset / Search */}
+          {/* Reset */}
           <div className="flex items-end">
             <button
+              type="button"
               onClick={() => {
                 setGender("");
-                setMinAge(18);
-                setMaxAge(45);
+                setMinAgeInput("18");
+                setMaxAgeInput("45");
                 setState("");
                 setSubCommunity("");
               }}
@@ -245,6 +304,22 @@ export default function DiscoveryPage() {
           </div>
         </div>
       </div>
+
+      {errorMsg && (
+        <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchProfiles()}
+            className="px-3 py-1 rounded-lg bg-white border border-red-200 font-bold text-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Profiles Grid */}
       {loading ? (
@@ -277,12 +352,19 @@ export default function DiscoveryPage() {
                   {/* Photo & Identity Header */}
                   <div className="flex items-start space-x-4">
                     <div className="w-20 h-20 rounded-2xl bg-ivory border border-warmgrey flex-shrink-0 flex items-center justify-center relative overflow-hidden">
-                      {p.photoVisibility === "PUBLIC_TO_MEMBERS" && p.photoKey ? (
+                      {p.photoId && p.photoVisibility === "PUBLIC_TO_MEMBERS" ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src="/icon.svg"
+                          src={`/api/profile/photo/${p.photoId}`}
                           alt={p.firstName}
-                          className="w-12 h-12 opacity-80"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : p.photoId && p.photoVisibility === "BLURRED" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/profile/photo/${p.photoId}`}
+                          alt={p.firstName}
+                          className="w-full h-full object-cover blur-md scale-110"
                         />
                       ) : (
                         <div className="text-center p-2 space-y-1">
@@ -295,7 +377,7 @@ export default function DiscoveryPage() {
                     </div>
 
                     <div className="space-y-1 flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-1">
                         <span className="font-extrabold text-plum text-lg truncate">
                           {p.firstName}
                         </span>
@@ -305,6 +387,7 @@ export default function DiscoveryPage() {
                       </div>
                       <p className="text-xs text-charcoal-light">
                         {p.age} years • {p.gender === "FEMALE" ? "Bride" : "Groom"}
+                        {p.subCommunity ? ` • ${p.subCommunity}` : ""}
                       </p>
                       <div className="flex items-center space-x-1 text-xs text-charcoal-light pt-0.5">
                         <MapPin className="w-3.5 h-3.5 text-gold-600 flex-shrink-0" />
@@ -351,6 +434,7 @@ export default function DiscoveryPage() {
                 <div className="pt-4 border-t border-warmgrey space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <button
+                      type="button"
                       onClick={() => handleSendInterest(p.id)}
                       disabled={isInterestSent}
                       className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 transition ${
@@ -373,6 +457,7 @@ export default function DiscoveryPage() {
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleToggleShortlist(p.id)}
                       className={`py-2 px-3 rounded-xl font-bold text-xs border border-warmgrey flex items-center justify-center space-x-1.5 transition ${
                         isShortlisted

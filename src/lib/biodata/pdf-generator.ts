@@ -41,6 +41,20 @@ export interface BiodataPdfOptions {
   generatedAt?: Date;
 }
 
+function sanitizePdfText(raw: string | null | undefined, fallback = "Not specified"): string {
+  if (!raw) return fallback;
+  const normalized = String(raw)
+    .replace(/₹/g, "Rs. ")
+    .replace(/[—–]/g, "-")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/•/g, "*")
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized || fallback;
+}
+
 export async function generateBiodataPdf(
   candidate: BiodataPdfInput,
   options: BiodataPdfOptions
@@ -56,7 +70,12 @@ export async function generateBiodataPdf(
     options.auditId || "AUD-" + candidate.publicId,
   ]);
 
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4 portrait in points
+  const rawPage = pdfDoc.addPage([595.28, 841.89]); // A4 portrait in points
+  const page = {
+    drawRectangle: rawPage.drawRectangle.bind(rawPage),
+    drawText: (text: string, opts: Parameters<typeof rawPage.drawText>[1]) =>
+      rawPage.drawText(sanitizePdfText(text, "-"), opts),
+  };
 
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);

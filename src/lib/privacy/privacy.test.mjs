@@ -6,12 +6,13 @@ import { generateBiodataPdf } from "../biodata/pdf-generator.ts";
 import { db } from "../db/index.ts";
 
 test("Milestone M6: Privacy, Watermarked Biodata & DPDP Act 2025 Suite", async (t) => {
-  // Cleanup + pool close run after ALL subtests, even if one fails.
-  // Deletes all users seeded by this suite (M6-03 and M6-04 use @pal.in
-  // emails); profiles/interests/shares cascade via ON DELETE CASCADE.
-  await t.after(async () => {
+  const createdUserIds = [];
+
+  t.after(async () => {
     try {
-      await db.query(`DELETE FROM public.users WHERE email LIKE '%@pal.in';`);
+      if (createdUserIds.length > 0) {
+        await db.query(`DELETE FROM public.users WHERE id = ANY($1::uuid[]);`, [createdUserIds]);
+      }
     } catch {
       // best-effort cleanup; never mask a real subtest failure
     }
@@ -89,6 +90,7 @@ test("Milestone M6: Privacy, Watermarked Biodata & DPDP Act 2025 Suite", async (
   await t.test("M6-03: Biodata & Photo Sharing Lifecycle (Request -> Approve -> Revoke)", async () => {
     const u1 = randomUUID();
     const u2 = randomUUID();
+    createdUserIds.push(u1, u2);
     const p1 = randomUUID();
     const p2 = randomUUID();
     const randSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -138,6 +140,7 @@ test("Milestone M6: Privacy, Watermarked Biodata & DPDP Act 2025 Suite", async (
 
   await t.test("M6-04: DPDP Act 2025 Consent Withdrawal & Account Erasure", async () => {
     const userId = randomUUID();
+    createdUserIds.push(userId);
     const profId = randomUUID();
     const randSuffix = Math.floor(1000 + Math.random() * 9000);
 
@@ -177,5 +180,25 @@ test("Milestone M6: Privacy, Watermarked Biodata & DPDP Act 2025 Suite", async (
     const profileCheck = await db.query(`SELECT publication_status, is_discoverable FROM public.profiles WHERE id = $1;`, [profId]);
     assert.strictEqual(profileCheck.rows[0].publication_status, "SUSPENDED");
     assert.strictEqual(profileCheck.rows[0].is_discoverable, false);
+  });
+
+  await t.test("M6-05: Watermarked PDF safely sanitizes Rupee symbol and Devanagari characters without WinAnsi crash", async () => {
+    const pdfBytes = await generateBiodataPdf(
+      {
+        publicId: "PAL900099",
+        firstName: "राजेश Pal",
+        gender: "MALE",
+        age: 29,
+        city: "Agra",
+        state: "Uttar Pradesh",
+        annualIncomeRange: "₹15 — ₹20 LPA",
+        aboutMe: "Family-oriented engineer • IIT Delhi",
+      },
+      {
+        recipientPublicId: "PAL900100",
+        isContactApproved: false,
+      }
+    );
+    assert.ok(pdfBytes instanceof Uint8Array && pdfBytes.length > 1500);
   });
 });

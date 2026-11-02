@@ -15,7 +15,8 @@
     "test:verification": "node --test src/lib/verification/verification.test.mjs",
     "test:admin": "node --test src/lib/admin/admin.test.mjs",
     "test:db": "node --test src/lib/db/db.test.mjs",
-    "test:crypto": "node --test src/lib/crypto/crypto.test.mjs"
+    "test:crypto": "node --test src/lib/crypto/crypto.test.mjs",
+    "test:e2e": "node e2e/full_user_and_admin_e2e.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

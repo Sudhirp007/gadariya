@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { storeAdminMfaCode } from "@/lib/admin/mfa";
+import {
+  storeAdminMfaCode,
+  createStatelessMfaChallenge,
+  ADMIN_MFA_CHALLENGE_COOKIE,
+} from "@/lib/admin/mfa";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -26,17 +30,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Access denied: Unauthorized email address" }, { status: 403 });
     }
 
-    // Generate 6-digit MFA OTP Challenge
+    // Generate 6-digit MFA OTP Challenge (both in-memory and stateless HMAC cookie for serverless)
     const mfaCode = Math.floor(100000 + Math.random() * 900000).toString();
     storeAdminMfaCode(`ADMIN_MFA:${email}`, mfaCode);
+    const statelessToken = createStatelessMfaChallenge(email, mfaCode);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       mfaRequired: true,
       email,
-      message: "MFA challenge initiated. Enter the 6-digit code or evaluation PIN (999888).",
+      message: "MFA challenge initiated. Enter the 6-digit code shown below.",
       devCode: mfaCode,
     });
+
+    response.cookies.set(ADMIN_MFA_CHALLENGE_COOKIE, statelessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 300,
+    });
+
+    return response;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ error: msg }, { status: 500 });

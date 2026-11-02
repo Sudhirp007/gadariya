@@ -239,6 +239,7 @@ export default function RegisterPage() {
       if (!res.ok) throw new Error(data.error || "Registration failed");
 
       setRegisteredProfile({ publicId: data.profile.publicId });
+      window.dispatchEvent(new Event("pal-auth-changed"));
       setStep(5);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Registration error";
