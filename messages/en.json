@@ -279,5 +279,17 @@
     "sending": "Sending...",
     "reportCandidate": "Report Candidate",
     "blockCandidate": "Block Candidate"
+  },
+  "manager": {
+    "self": "Myself",
+    "son": "Son",
+    "daughter": "Daughter",
+    "brother": "Brother",
+    "sister": "Sister",
+    "relative": "Relative / Guardian",
+    "selfDesc": "Candidate managing directly",
+    "parentDesc": "Parent managing profile",
+    "siblingDesc": "Brother / Sister managing",
+    "relativeDesc": "Family Guardian managing"
   }
 }

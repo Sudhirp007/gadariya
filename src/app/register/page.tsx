@@ -274,12 +274,12 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
-                { id: "SELF", label: t("manager.self") },
-                { id: "SON", label: t("manager.son") },
-                { id: "DAUGHTER", label: t("manager.daughter") },
-                { id: "BROTHER", label: t("manager.brother") },
-                { id: "SISTER", label: t("manager.sister") },
-                { id: "RELATIVE", label: t("manager.relative") },
+                { id: "SELF", label: t("manager.self"), desc: t("manager.selfDesc") },
+                { id: "SON", label: t("manager.son"), desc: t("manager.parentDesc") },
+                { id: "DAUGHTER", label: t("manager.daughter"), desc: t("manager.parentDesc") },
+                { id: "BROTHER", label: t("manager.brother"), desc: t("manager.siblingDesc") },
+                { id: "SISTER", label: t("manager.sister"), desc: t("manager.siblingDesc") },
+                { id: "RELATIVE", label: t("manager.relative"), desc: t("manager.relativeDesc") },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -287,12 +287,12 @@ export default function RegisterPage() {
                   onClick={() => setFormData({ ...formData, managedBy: item.id })}
                   className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between ${
                     formData.managedBy === item.id
-                      ? "border-plum bg-plum-50 text-plum font-bold ring-2 ring-plum/20"
-                      : "border-warmgrey bg-white text-charcoal hover:border-plum-300"
+                      ? "border-plum bg-plum-50 text-plum font-bold ring-2 ring-plum/20 shadow-xs"
+                      : "border-warmgrey bg-white text-charcoal hover:border-plum-300 hover:bg-ivory/50"
                   }`}
                 >
                   <span className="text-sm font-semibold">{item.label}</span>
-                  <span className="text-2xs text-charcoal-light mt-1">Profile Manager</span>
+                  <span className="text-2xs text-charcoal-light mt-1">{item.desc}</span>
                 </button>
               ))}
             </div>
