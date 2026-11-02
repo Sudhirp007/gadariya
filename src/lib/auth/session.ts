@@ -16,6 +16,11 @@ function getSecretKey(): Buffer {
   if (masterKey && masterKey.length >= 32) {
     return Buffer.from(masterKey.slice(0, 32), "utf-8");
   }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SECURITY VIOLATION: ENCRYPTION_MASTER_KEY must be configured and >= 32 characters in production."
+    );
+  }
   return Buffer.from("pal_matrimony_fallback_secret_32b!", "utf-8");
 }
 

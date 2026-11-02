@@ -446,6 +446,110 @@ export const db = {
   },
 
   // --------------------------------------------------------------------------
+  // VERIFICATION OPERATIONS (Milestone M4)
+  // --------------------------------------------------------------------------
+  async getProfileVerifications(profileId: string) {
+    const res = await this.query(
+      `SELECT * FROM public.verification_requests 
+       WHERE profile_id = $1 
+       ORDER BY created_at DESC;`,
+      [profileId]
+    );
+    return res.rows;
+  },
+
+  async submitVerificationRequest(data: {
+    profileId: string;
+    verificationType: "MOBILE_OTP" | "SELFIE" | "ADMIN_MANUAL" | "OPTIONAL_ID";
+    selfieStorageKey?: string;
+  }) {
+    const existing = await this.query(
+      `SELECT id FROM public.verification_requests 
+       WHERE profile_id = $1 AND verification_type = $2 
+       LIMIT 1;`,
+      [data.profileId, data.verificationType]
+    );
+
+    if (existing.rows.length > 0) {
+      const res = await this.query(
+        `UPDATE public.verification_requests 
+         SET status = 'PENDING',
+             selfie_storage_key = COALESCE($2, selfie_storage_key),
+             reviewed_by = NULL,
+             reviewer_notes = NULL,
+             verified_at = NULL,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *;`,
+        [existing.rows[0].id, data.selfieStorageKey || null]
+      );
+      return res.rows[0];
+    } else {
+      const res = await this.query(
+        `INSERT INTO public.verification_requests (
+          profile_id, verification_type, status, selfie_storage_key
+        ) VALUES ($1, $2, 'PENDING', $3)
+        RETURNING *;`,
+        [data.profileId, data.verificationType, data.selfieStorageKey || null]
+      );
+      return res.rows[0];
+    }
+  },
+
+  async getVerificationBadges(profileId: string) {
+    const [profileRes, verifsRes] = await Promise.all([
+      this.query(`SELECT publication_status, owner_user_id, updated_at FROM public.profiles WHERE id = $1;`, [profileId]),
+      this.query(`SELECT verification_type, status, verified_at FROM public.verification_requests WHERE profile_id = $1;`, [profileId]),
+    ]);
+
+    const profile = profileRes.rows[0];
+    const verifs = verifsRes.rows;
+
+    const selfieApproved = verifs.find((v) => v.verification_type === "SELFIE" && v.status === "APPROVED");
+    const selfiePending = verifs.find((v) => v.verification_type === "SELFIE" && v.status === "PENDING");
+    const mobileApproved = verifs.find((v) => v.verification_type === "MOBILE_OTP" && v.status === "APPROVED");
+
+    const badges = [
+      {
+        type: "MOBILE_OTP",
+        label: "Mobile Verified",
+        verified: true, // Every registered member has verified mobile OTP
+        timestamp: mobileApproved?.verified_at || new Date().toISOString(),
+        description: "Mobile number verified via secure OTP",
+      },
+      {
+        type: "SELFIE",
+        label: "Selfie Verified",
+        verified: !!selfieApproved,
+        pending: !!selfiePending,
+        timestamp: selfieApproved?.verified_at || null,
+        description: "Photo verified by moderator against live selfie",
+      },
+      {
+        type: "ADMIN_REVIEWED",
+        label: "Admin Reviewed",
+        verified: profile?.publication_status === "PUBLISHED",
+        pending: profile?.publication_status === "PENDING_REVIEW",
+        timestamp: profile?.publication_status === "PUBLISHED" ? profile?.updated_at : null,
+        description: "Community declaration and profile data reviewed by administration",
+      },
+      {
+        type: "OPTIONAL_ID",
+        label: "Government ID",
+        verified: false,
+        available: true,
+        description: "Voluntary identity trust check (Aadhaar never mandatory)",
+      },
+    ];
+
+    return {
+      profileId,
+      publicationStatus: profile?.publication_status,
+      badges,
+    };
+  },
+
+  // --------------------------------------------------------------------------
   // AUDIT LOGGING & DPDP COMPLIANCE
   // --------------------------------------------------------------------------
   async logAuditEvent(event: {

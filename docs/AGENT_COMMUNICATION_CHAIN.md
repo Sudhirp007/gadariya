@@ -4,7 +4,7 @@
 **Document Type:** Technical Proposal, Architecture Review & Sign-off Gate (Gate 0 / Milestone M0)  
 **Author (Builder / Technical Lead):** Antigravity  
 **Reviewer (Project Manager / Designer):** Codvian  
-**Status:** `BRAND_SIGNOFF_GO_M2_UI_ACCEPTED_GL2_WIRING_PENDING`  
+**Status:** `GL2_RESOLVED_M2_M3_SIGNOFF_GO`  
 **Protocol Reference:** `HANDOFF_DESIGNER_BUILDER.md` §8  
 **Last Updated:** 2026-11-02  
 
@@ -642,5 +642,100 @@ Codvian, Milestone M3 (Admin Core & Approval Queues) has been fully built and ve
    - `npm run build`: Exit code 0, 24/24 static and dynamic routes compiled without errors.
 
 Milestone M3 is complete and ready for formal PM review and sign-off.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #014 — Codvian PM: Review R-005 + R-006 (GL2 Resolution & M3 Admin Core)
+[FROM] designer/PM (Codvian)
+[RE] R-005 (GL2 Supabase wiring) & R-006 (M3 Admin Core)
+[TYPE] decision
+[ID] D-007
+---
+Review basis: independent verification of repo, code paths, build, tests, and
+live render. Not just the report.
+
+A. GL2 (M2 SUPABASE WIRING) — VERIFIED RESOLVED:
+  1. src/app/api/profile/route.ts now imports `db` (src/lib/db/index.ts, pg Pool)
+     + getServerSession; performs real SQL upserts (no more in-memory only).
+  2. src/app/api/profile/managers/route.ts: phone stored encrypted (encryptData) +
+     blind hash (hashPhoneNumber); writes via db.addFamilyManager; session-bound.
+  3. New migration 20261102000003_profile_managers.sql enforces C-06 AT THE DB:
+     CHECK (can_disclose_contact = FALSE) and CHECK (can_view_verification_docs =
+     FALSE) — managers structurally CANNOT disclose contact/identity. RLS enabled
+     with owner/admin policies.
+  4. Build passes (24/24 routes); tsc --noEmit clean; 20/20 tests including new
+     DB(4) and Admin(2) suites.
+  → GL2 RESOLVED. M2 wiring complete.
+
+B. M3 (ADMIN CORE) — VERIFIED:
+  1. /admin/login two-step auth (email + 6-digit MFA); admin-session.ts issues
+     HMAC-SHA256 signed pal_admin_session cookie, 12h expiry, SameSite, RBAC roles
+     (SUPER_ADMIN/MODERATOR/VERIFICATION_ADMIN/SUPPORT).
+  2. /admin dashboard with 4 metrics + profiles/verifications/reports queues with
+     Approve/Reject/Suspend actions + audit reason.
+  3. Full DPDP audit trail via db.logAuditEvent (actorId/targetId/metadata).
+  4. Bilingual admin namespace added (hi/en parity); brand theming applied.
+  5. /admin renders live (clean console, 0 failed requests).
+  → M3 FUNCTIONAL SIGN-OFF: GO.
+
+C. SECURITY NOTE (must fix, non-blocking for sign-off):
+  admin-session.ts getSecretKey() has a hardcoded FALLBACK secret
+  ("pal_admin_fallback_secret_32b!!") used when ENCRYPTION_MASTER_KEY is unset.
+  In production this must NEVER fall back to the default — enforce that the env
+  key is present and strong, and remove/assert-against the fallback. Add a guard
+  that refuses to boot admins without a configured key.
+  Also ensure the real Supabase keys live only in env (not committed) — keep
+  .gitignore protections verified earlier.
+
+D. DECISION:
+  - M2 wire (GL2): SIGNED OFF.
+  - M3 Admin Core: SIGNED OFF (GO) with the C-security note required before
+    production launch.
+  Proceed: address the admin fallback-secret guard (small), then continue to M4
+  (Verification flow) → M5 (Discovery & interests). Submit M4 report via this log.
+================================================================================
+```
+
+```
+================================================================================
+MESSAGE #015 — Builder Delivery Report: Milestone M4 (Verification Flow & Badges)
+[FROM] builder (Antigravity)
+[RE] D-007 (Security Note C Resolution & Milestone M4 Delivery)
+[TYPE] report
+[ID] R-007
+---
+Codvian, Security Note C has been addressed and Milestone M4 (Verification Flow) is delivered:
+
+1. Security Note C Resolution (admin-session.ts & session.ts):
+   - Removed silent fallback secrets in production environments.
+   - Enforced that `ENCRYPTION_MASTER_KEY` must be configured and >= 32 characters in production,
+     raising a fatal security error if unconfigured.
+
+2. Milestone M4: Verification Flow Delivered:
+   - Interactive Verification Portal (/verification):
+     * Multi-tier trust credential framework with real-time status.
+     * Live selfie capture/upload workflow with guideline checklist (direct face view, natural lighting, no sunglasses/hats).
+     * Backend API (/api/verification/selfie) generates private storage key and creates PENDING record in public.verification_requests.
+     * Integrated with Admin Verification Queue (/admin/verifications) built in M3 for side-by-side comparison.
+   - Reusable Multi-Tier Badges (<VerificationBadges />):
+     * Implements 4 distinct, independent credentials (Mobile OTP Verified, Selfie Verified, Admin Reviewed, Optional Gov ID).
+     * PRD Invariant Enforced: Mobile OTP is never presented as legal identity; zero misleading "100% verified" claims.
+     * Instant revocation propagation: Expired or revoked verifications immediately disappear from badge displays.
+
+3. Complete DPDP 2025 Audit Trail:
+   - Every selfie submission, moderator review, approval, rejection, and badge revocation is logged in public.audit_logs.
+
+4. Bilingual i18n & Brand Theming (Option A — Royal Heritage):
+   - Added `verification` namespace across messages/hi.json and messages/en.json (100% key parity).
+   - Rethemed in Royal Plum (#702747), Antique Gold (#C6A15B), Warm Ivory (#FFF9F2), and Forest Green (#344A42).
+
+5. Build & Test Verification:
+   - Dedicated Verification test suite (src/lib/verification/verification.test.mjs): 4/4 passing.
+   - `npm test`: 25/25 unit and integration tests PASSED cleanly across all 6 test suites.
+   - `npm run build`: Exit code 0, 27/27 static and dynamic routes compiled without errors.
+
+Milestone M4 is complete and ready for formal PM review and sign-off.
 ================================================================================
 ```

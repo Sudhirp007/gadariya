@@ -181,5 +181,25 @@
     "notesPlaceholder": "Reason for action (Mandatory for audit)...",
     "actionSuccess": "Action completed successfully",
     "logout": "Admin Logout"
+  },
+  "verification": {
+    "pageTitle": "Profile Verification & Trust Badges",
+    "pageSubtitle": "Independent, verified credentials to foster mutual trust without compromising personal privacy.",
+    "selfieCardTitle": "Live Selfie Verification",
+    "selfieCardDesc": "Moderators compare your live selfie against your profile photo to grant the Selfie Verified badge.",
+    "uploadButton": "Submit Selfie for Review",
+    "uploading": "Submitting...",
+    "pendingReview": "Selfie Submitted — Pending Moderator Review",
+    "verified": "Selfie Verified",
+    "instructionsTitle": "Guidelines for Quick Approval:",
+    "inst1": "Face the camera directly with clear facial features visible",
+    "inst2": "Ensure good natural lighting without heavy shadows or filters",
+    "inst3": "Do not wear sunglasses, caps, or face masks",
+    "mobileTitle": "Mobile Verification",
+    "mobileDesc": "Verified via single-use SMS OTP during registration.",
+    "communityTitle": "Community & Biodata Review",
+    "communityDesc": "Admin moderation verifies Pal community declaration and biodata dignity.",
+    "idTitle": "Optional Government ID Check",
+    "idDesc": "Voluntary high-trust marker. Aadhaar is never mandatory; ID document copies are never retained."
   }
 }
