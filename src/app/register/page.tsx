@@ -166,20 +166,35 @@ export default function RegisterPage() {
       const token = await res.user.getIdToken();
       setFirebaseIdToken(token);
 
+      const googlePhone = res.user.phoneNumber ? res.user.phoneNumber.replace(/\D/g, "").slice(-10) : "";
+
       setFormData((prev) => ({
         ...prev,
         firstName: prev.firstName || res.user.displayName || "",
         email: prev.email || res.user.email || "",
-        phone: res.user.phoneNumber ? res.user.phoneNumber.replace(/\D/g, "").slice(-10) : prev.phone,
-        otpVerified: Boolean(res.user.phoneNumber),
+        phone: googlePhone || prev.phone,
+        otpVerified: Boolean(googlePhone),
       }));
 
-      if (res.user.phoneNumber) {
+      if (googlePhone) {
         setStep(4);
+      } else {
+        // Prompt for 10-digit phone number if Google account did not supply one
+        setError("Google account linked! Please enter your 10-digit mobile number below to complete OTP verification.");
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Google sign-in error";
-      setError(msg);
+      if (msg.includes("popup-closed-by-user") || msg.includes("cancelled-popup-request")) {
+        setError("Google Sign-In popup was closed. Please try again or use Phone OTP.");
+      } else if (msg.includes("popup-blocked")) {
+        setError("Browser popup was blocked. Please allow popups for this site or use Phone OTP.");
+      } else if (msg.includes("operation-not-allowed")) {
+        setError("Google Sign-In is pending activation in the Firebase console. Please sign up using Mobile OTP.");
+      } else if (msg.includes("unauthorized-domain") || msg.includes("not iterable")) {
+        setError("Google authentication service is validating domain. Please sign up using Mobile OTP.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -352,7 +367,7 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-charcoal">{t("profile.height")}</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.height")}</label>
                 <input
                   type="number"
                   min={120}
@@ -364,16 +379,16 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-charcoal">{t("profile.maritalStatus")}</label>
+                <label className="text-xs font-semibold text-charcoal">{t("register.maritalStatus")}</label>
                 <select
                   value={formData.maritalStatus}
                   onChange={(e) => setFormData({ ...formData, maritalStatus: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-warmgrey focus:outline-none focus:ring-2 focus:ring-plum text-sm bg-white"
                 >
-                  <option value="NEVER_MARRIED">{t("profile.neverMarried")}</option>
-                  <option value="DIVORCED">{t("profile.divorced")}</option>
-                  <option value="WIDOWED">{t("profile.widowed")}</option>
-                  <option value="AWAITING_DIVORCE">{t("profile.awaitingDivorce")}</option>
+                  <option value="NEVER_MARRIED">{t("register.maritalOptions.NEVER_MARRIED")}</option>
+                  <option value="DIVORCED">{t("register.maritalOptions.DIVORCED")}</option>
+                  <option value="WIDOWED">{t("register.maritalOptions.WIDOWED")}</option>
+                  <option value="AWAITING_DIVORCE">{t("register.maritalOptions.AWAITING_DIVORCE")}</option>
                 </select>
               </div>
             </div>

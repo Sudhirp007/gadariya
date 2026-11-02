@@ -68,6 +68,7 @@
     "seconds": "seconds",
     "invalidOtp": "Invalid or expired OTP. Please try again.",
     "logout": "Sign Out",
+    "login": "Sign In",
     "noAccount": "Don't have an account?",
     "haveAccount": "Already registered?"
   },
@@ -88,6 +89,7 @@
       "RELATIVE": "Relative / Guardian"
     },
     "firstName": "Candidate's First Name",
+    "name": "Candidate Full Name",
     "gender": "Gender",
     "male": "Male",
     "female": "Female",
@@ -119,6 +121,12 @@
     "title": "My Profile & Family Management",
     "completionScore": "Profile Completion",
     "publicIdLabel": "Public ID",
+    "height": "Height (in cm)",
+    "maritalStatus": "Marital Status",
+    "neverMarried": "Never Married",
+    "divorced": "Divorced",
+    "widowed": "Widowed",
+    "awaitingDivorce": "Awaiting Divorce",
     "tabBiodata": "Career & Education",
     "tabFamily": "Family Details",
     "tabPreferences": "Partner Preferences",

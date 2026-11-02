@@ -148,7 +148,17 @@ export default function LoginPage() {
       }, 1000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Google sign-in error";
-      setError(msg);
+      if (msg.includes("popup-closed-by-user") || msg.includes("cancelled-popup-request")) {
+        setError("Google Sign-In popup was closed. Please try again or use Phone OTP.");
+      } else if (msg.includes("popup-blocked")) {
+        setError("Browser popup was blocked. Please allow popups for this site or use Phone OTP.");
+      } else if (msg.includes("operation-not-allowed")) {
+        setError("Google Sign-In is pending activation in the Firebase console. Please sign in using Phone verification.");
+      } else if (msg.includes("unauthorized-domain") || msg.includes("not iterable")) {
+        setError("Google authentication service is validating domain. Please sign in using Phone verification.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
