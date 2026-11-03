@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Noto_Sans_Devanagari } from "next/font/google";
 import "./globals.css";
 import { I18nProvider } from "@/lib/i18n/context";
@@ -18,6 +18,12 @@ const notoSansDevanagari = Noto_Sans_Devanagari({
   display: "swap",
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
   title: "पाल मैट्रिमोनी (Pal Matrimony) — gadariya.org",
   description:
@@ -34,7 +40,7 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col antialiased bg-ivory text-charcoal font-sans">
         <I18nProvider>
           <AppHeader />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1 pb-16 md:pb-0">{children}</main>
           <AppFooter />
         </I18nProvider>
       </body>

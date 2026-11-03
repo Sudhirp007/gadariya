@@ -1,12 +1,42 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n/context";
-import { ShieldCheck, Lock, UserCheck, FileCheck2, Heart } from "lucide-react";
+import { ShieldCheck, Lock, UserCheck, FileCheck2, Heart, Sparkles, User } from "lucide-react";
+
+interface AuthState {
+  checked: boolean;
+  authenticated: boolean;
+  profile: {
+    id: string;
+    publicId: string;
+    firstName: string;
+  } | null;
+}
 
 export default function HomePage() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const [auth, setAuth] = useState<AuthState>({
+    checked: false,
+    authenticated: false,
+    profile: null,
+  });
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setAuth({
+            checked: true,
+            authenticated: !!data.authenticated,
+            profile: data.profile || null,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-16 py-8">
@@ -27,18 +57,39 @@ export default function HomePage() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Link
-            href="/register"
-            className="w-full sm:w-auto px-8 py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition text-base"
-          >
-            {t("home.ctaRegister")}
-          </Link>
-          <a
-            href="#safety"
-            className="w-full sm:w-auto px-8 py-3.5 bg-gold-100 hover:bg-gold-200 text-plum-900 font-semibold rounded-xl border border-gold-300 shadow-2xs transition text-base"
-          >
-            {t("home.ctaExplore")}
-          </a>
+          {auth.authenticated ? (
+            <>
+              <Link
+                href="/discovery"
+                className="w-full sm:w-auto px-8 py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition text-base flex items-center justify-center space-x-2"
+              >
+                <Sparkles className="w-5 h-5 text-gold-300" />
+                <span>{locale === "hi" ? "सुयोग्य रिश्ते देखें" : "Explore Matches"}</span>
+              </Link>
+              <Link
+                href="/profile"
+                className="w-full sm:w-auto px-8 py-3.5 bg-gold-100 hover:bg-gold-200 text-plum-900 font-semibold rounded-xl border border-gold-300 shadow-2xs transition text-base flex items-center justify-center space-x-2"
+              >
+                <User className="w-5 h-5 text-plum" />
+                <span>{locale === "hi" ? "मेरी प्रोफ़ाइल" : "My Profile"}</span>
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/register"
+                className="w-full sm:w-auto px-8 py-3.5 bg-plum hover:bg-plum-800 text-white font-semibold rounded-xl shadow-md transition text-base"
+              >
+                {t("home.ctaRegister")}
+              </Link>
+              <a
+                href="#safety"
+                className="w-full sm:w-auto px-8 py-3.5 bg-gold-100 hover:bg-gold-200 text-plum-900 font-semibold rounded-xl border border-gold-300 shadow-2xs transition text-base"
+              >
+                {t("home.ctaExplore")}
+              </a>
+            </>
+          )}
         </div>
       </section>
 
@@ -137,12 +188,22 @@ export default function HomePage() {
           {t("home.communityCalloutDesc")}
         </p>
         <div className="pt-2">
-          <Link
-            href="/register"
-            className="inline-block px-7 py-3 bg-plum hover:bg-plum-800 text-white font-semibold text-sm rounded-xl shadow-md transition"
-          >
-            {t("home.joinToday")}
-          </Link>
+          {auth.authenticated ? (
+            <Link
+              href="/discovery"
+              className="inline-flex items-center space-x-2 px-7 py-3 bg-plum hover:bg-plum-800 text-white font-semibold text-sm rounded-xl shadow-md transition"
+            >
+              <Sparkles className="w-4 h-4 text-gold-300" />
+              <span>{locale === "hi" ? "समुदाय के रिश्ते देखें" : "Explore Community Matches"}</span>
+            </Link>
+          ) : (
+            <Link
+              href="/register"
+              className="inline-block px-7 py-3 bg-plum hover:bg-plum-800 text-white font-semibold text-sm rounded-xl shadow-md transition"
+            >
+              {t("home.joinToday")}
+            </Link>
+          )}
         </div>
       </section>
     </div>

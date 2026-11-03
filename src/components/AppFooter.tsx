@@ -68,8 +68,19 @@ export function AppFooter() {
           </div>
         </div>
       </div>
-      <div className="max-w-6xl mx-auto px-4 mt-8 pt-6 border-t border-warmgrey text-center text-xs text-charcoal-light">
-        {t("footer.copyright")}
+      <div className="max-w-6xl mx-auto px-4 mt-8 pt-6 border-t border-warmgrey flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left text-xs text-charcoal-light">
+        <div>{t("footer.copyright")}</div>
+        <div className="flex items-center space-x-1.5 font-medium">
+          <span>Developed by</span>
+          <a
+            href="https://helloshiva.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-plum hover:text-gold-600 underline underline-offset-2 transition"
+          >
+            HelloShiva
+          </a>
+        </div>
       </div>
     </footer>
   );

@@ -1,16 +1,29 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
-import { AlertCircle, CheckCircle2, ArrowRight, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, UserCheck } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import type { ConfirmationResult } from "firebase/auth";
 
 export default function LoginPage() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const router = useRouter();
+
+  const [existingUser, setExistingUser] = useState<{ firstName: string; publicId: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.authenticated && data?.profile) {
+          setExistingUser(data.profile);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -168,6 +181,40 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (existingUser) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-6">
+        <div className="bg-white rounded-3xl border border-warmgrey p-8 shadow-sm space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-forest-50 border border-forest-200 text-forest flex items-center justify-center mx-auto">
+            <UserCheck className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-plum">
+            {locale === "hi" ? "आप पहले से लॉग इन हैं" : "Already Signed In"}
+          </h2>
+          <p className="text-sm text-charcoal leading-relaxed">
+            {locale === "hi"
+              ? `आप ${existingUser.firstName} (${existingUser.publicId}) के रूप में सक्रिय हैं।`
+              : `You are signed in as ${existingUser.firstName} (${existingUser.publicId}).`}
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
+            <Link
+              href="/profile"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-plum hover:bg-plum-800 text-white font-semibold text-sm shadow-md transition"
+            >
+              {locale === "hi" ? "मेरी प्रोफ़ाइल" : "Go to My Profile"}
+            </Link>
+            <Link
+              href="/discovery"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gold-100 hover:bg-gold-200 text-plum-900 border border-gold-300 font-semibold text-sm shadow-xs transition"
+            >
+              {locale === "hi" ? "रिश्ते देखें" : "Browse Matches"}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">

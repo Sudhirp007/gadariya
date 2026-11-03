@@ -1,18 +1,37 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n/context";
-import { ShieldCheck, UserCheck, CheckCircle2, AlertCircle, ArrowLeft, ArrowRight, Phone, Check } from "lucide-react";
+import { ShieldCheck, UserCheck, CheckCircle2, AlertCircle, ArrowLeft, ArrowRight, Phone, Check, RefreshCw } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import type { ConfirmationResult } from "firebase/auth";
 
 export default function RegisterPage() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const router = useRouter();
+
+  const [existingUser, setExistingUser] = useState<{ firstName: string; publicId: string } | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.authenticated && data?.profile) {
+          setExistingUser(data.profile);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setAuthChecking(false);
+      });
+  }, []);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -248,6 +267,40 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
+  if (existingUser) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-6">
+        <div className="bg-white rounded-3xl border border-warmgrey p-8 shadow-sm space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-forest-50 border border-forest-200 text-forest flex items-center justify-center mx-auto">
+            <UserCheck className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-plum">
+            {locale === "hi" ? "आप पहले से पंजीकृत हैं" : "Already Registered & Signed In"}
+          </h2>
+          <p className="text-sm text-charcoal leading-relaxed">
+            {locale === "hi"
+              ? `आप ${existingUser.firstName} (${existingUser.publicId}) के रूप में पहले से जुड़े हैं। आपको दोबारा पंजीकरण करने की आवश्यकता नहीं है।`
+              : `You are already signed in as ${existingUser.firstName} (${existingUser.publicId}). You do not need to register again.`}
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
+            <Link
+              href="/profile"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-plum hover:bg-plum-800 text-white font-semibold text-sm shadow-md transition"
+            >
+              {locale === "hi" ? "मेरी प्रोफ़ाइल देखें / संपादित करें" : "Go to My Profile"}
+            </Link>
+            <Link
+              href="/discovery"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gold-100 hover:bg-gold-200 text-plum-900 border border-gold-300 font-semibold text-sm shadow-xs transition"
+            >
+              {locale === "hi" ? "सुयोग्य रिश्ते देखें (Matches)" : "Browse Matches"}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">

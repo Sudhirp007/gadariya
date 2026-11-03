@@ -14,12 +14,12 @@ export function BrandLogo({ variant = "full", className = "", isLight = false }:
   const { locale } = useTranslation();
 
   return (
-    <Link href="/" className={`inline-flex items-center space-x-3 group ${className}`}>
+    <Link href="/" className={`inline-flex items-center space-x-2 sm:space-x-3 group ${className}`}>
       {/* Approved Symbol: Two Interlocking Forms + Subtle Heart (Royal Plum & Antique Gold) */}
-      <div className="relative w-10 h-10 flex-shrink-0 flex items-center justify-center">
+      <div className="relative w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 flex items-center justify-center">
         <svg
           viewBox="0 0 40 40"
-          className="w-10 h-10 transform group-hover:scale-105 transition duration-200"
+          className="w-9 h-9 sm:w-10 sm:h-10 transform group-hover:scale-105 transition duration-200"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -52,14 +52,14 @@ export function BrandLogo({ variant = "full", className = "", isLight = false }:
       {variant === "full" && (
         <div className="flex flex-col">
           <span
-            className={`font-bold text-lg sm:text-xl tracking-tight leading-tight ${
+            className={`font-bold text-base sm:text-xl tracking-tight leading-tight ${
               isLight ? "text-white" : "text-plum-700"
             }`}
           >
             {locale === "hi" ? "पाल मैट्रिमोनी" : "Pal Matrimony"}
           </span>
           <span
-            className={`text-[11px] font-medium tracking-wide ${
+            className={`text-[10px] sm:text-[11px] font-medium tracking-wide ${
               isLight ? "text-gold-300" : "text-gold-600"
             }`}
           >
