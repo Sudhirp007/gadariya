@@ -24,6 +24,8 @@
 .env.development
 .env.test
 .env.production
+.secrets/
+.secrets/*
 Mercury API Key.txt
 Mercury API Key.png
 supabase password.txt
